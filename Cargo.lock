@@ -671,6 +671,9 @@ dependencies = [
  "compressed-rtf",
  "crossterm 0.29.0",
  "ratatui",
+ "serde",
+ "serde_json",
+ "sha2",
  "thiserror",
  "tracing",
  "tracing-subscriber",
@@ -690,9 +693,7 @@ name = "pstsmith-cli"
 version = "0.1.0"
 dependencies = [
  "pstsmith",
- "serde",
  "serde_json",
- "sha2",
 ]
 
 [[package]]

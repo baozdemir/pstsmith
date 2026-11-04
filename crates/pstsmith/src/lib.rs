@@ -16,6 +16,8 @@ use thiserror::Error;
 use tracing::{error, instrument, warn};
 
 pub mod ltp;
+#[cfg(feature = "convert")]
+pub mod convert;
 pub mod messaging;
 pub mod ndb;
 
