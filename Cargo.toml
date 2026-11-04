@@ -1,18 +1,17 @@
 [workspace]
-members = ["crates/compressed-rtf", "crates/pst"]
+members = ["crates/compressed-rtf", "crates/pstsmith", "crates/pstsmith-check", "crates/pstsmith-cli"]
 resolver = "2"
 
 [patch.crates-io]
 compressed-rtf = { path = "crates/compressed-rtf" }
 
 [workspace.package]
-authors = ["Microsoft"]
+authors = ["The pstsmith contributors"]
 edition = "2021"
 rust-version = "1.82"
-repository = "https://github.com/microsoft/outlook-pst-rs"
+repository = "https://github.com/baozdemir/pstsmith"
+homepage = "https://github.com/baozdemir/pstsmith"
 license = "MIT"
-keywords = ["win32", "outlook", "mapi"]
-categories = ["os::windows-apis"]
 
 [workspace.dependencies]
 compressed-rtf = "1"

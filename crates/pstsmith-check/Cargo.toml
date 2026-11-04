@@ -1,0 +1,15 @@
+[package]
+name = "pstsmith-check"
+description = "Structural checks of PST files for pstsmith's own tests: block references, contents-table cells, node digests, heap fill levels"
+version = "0.1.0"
+publish = false
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+pstsmith = { path = "../pstsmith" }
+sha2 = "0.10"
+serde_json = "1"

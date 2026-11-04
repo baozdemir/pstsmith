@@ -2,14 +2,16 @@
 name = "compressed-rtf"
 description = "[MS-OXRTFCP]: Rich Text Format (RTF) Compression Algorithm"
 version = "1.0.1"
+# Microsoft's crate from microsoft/outlook-pst-rs, unmodified; used only by the examples. Not published from here.
+publish = false
 
-authors.workspace = true
+authors = ["Microsoft"]
 edition.workspace = true
 rust-version.workspace = true
-repository.workspace = true
+repository = "https://github.com/microsoft/outlook-pst-rs"
 license.workspace = true
-keywords.workspace = true
-categories.workspace = true
+keywords = ["win32", "outlook", "mapi"]
+categories = ["os::windows-apis"]
 
 [dependencies]
 byteorder.workspace = true

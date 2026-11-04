@@ -1,0 +1,42 @@
+[package]
+name = "pstsmith"
+description = "Read, create and append PST files in pure Rust, without Outlook"
+version = "0.1.0"
+
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/pstsmith"
+readme = "README.md"
+license.workspace = true
+keywords = ["pst", "email", "mapi", "outlook", "archive"]
+categories = ["email", "parser-implementations", "encoding"]
+
+[lib]
+name = "pstsmith"
+
+[features]
+# Maintainer diagnostics, off by default and never in a release build: a counting allocator and per-commit operation
+# counters, reported per commit to the file named by PST_INSTRUMENT_OUT.
+mem-profile = []
+op-counters = []
+
+[dependencies]
+byteorder.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[[example]]
+name = "gen-fixture-pst"
+path = "examples/gen-fixture-pst.rs"
+
+[dev-dependencies]
+anyhow.workspace = true
+clap.workspace = true
+codepage-strings.workspace = true
+compressed-rtf.workspace = true
+crossterm.workspace = true
+ratatui.workspace = true
+tracing-subscriber = { workspace = true, features = [ "env-filter" ] }

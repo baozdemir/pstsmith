@@ -1,0 +1,30 @@
+[package]
+name = "pstsmith-cli"
+description = "Convert mail to PST files: the pstsmith command line"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+license.workspace = true
+keywords = ["pst", "email", "eml", "mbox", "outlook"]
+categories = ["command-line-utilities", "email"]
+
+[[bin]]
+name = "pstsmith"
+path = "src/main.rs"
+
+[dependencies]
+pstsmith = { path = "../pstsmith", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[features]
+# Tests only: `--max-file-bytes N` sets any file size limit; release builds take the four choices of `--max-file-size`.
+test-file-sizes = []
+# Maintainer diagnostics, see the pstsmith crate.
+mem-profile = ["pstsmith/mem-profile"]
+op-counters = ["pstsmith/op-counters"]
