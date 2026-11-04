@@ -1,19 +1,31 @@
-# outlook-pst-rw
+# pstsmith
 
-This is an MIT-licensed fork of Microsoft's `outlook-pst` crate. It preserves the reader API and adds narrowly scoped creation and incremental append support for Unicode PST files.
+Read, create and append PST files in pure Rust, on any operating system, without Outlook or MAPI.
 
-The PST file format is publicly documented in the [MS-PST](https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-pst/141923d5-15ab-4ef1-a524-6dce75aae546) open specification. Data structures and type names generally mimic the concepts and names in that document, with some adjustment for readability and to match Rust language conventions. As much as possible, everything in this crate should have a deep link to the documentation it is based on in the doc comments. 
+The PST format is documented in the [MS-PST](https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-pst/141923d5-15ab-4ef1-a524-6dce75aae546)
+open specification. Type names follow that document, adjusted to Rust conventions, and doc comments link to the
+sections they implement.
 
-## Writer
+## Reading
 
-The writer API creates a message store, IPM subtree, Inbox, and messages with TO, CC, and BCC recipients. It stores optional UTF-8 HTML in `PR_HTML` while retaining `PR_BODY` as the plain-text fallback. Generate a compatibility fixture with:
+`UnicodePstFile::open` and `AnsiPstFile::open` (with `open_store`) read Unicode (Outlook 2003 and later) and ANSI
+(Outlook 97-2002) files: the store, folders, contents and hierarchy tables, messages, recipients, attachments and
+named properties.
 
-```sh
-cargo run -p outlook-pst-rw --example gen-fixture-pst -- fixture.pst
-cargo run -p outlook-pst-rw --example gen-fixture-pst -- stress.pst --stress
-```
+## Writing
 
-`UnicodePstFile::append` adds messages to the default receive folder of an existing unencrypted Unicode PST without replacing existing messages. For exports, prefer `append_many*`: it writes message and attachment blocks incrementally and rebuilds the contents table and B-trees once per batch instead of once per message. The `create_in_folder*` and `append_in_folder*` variants accept a path relative to the IPM subtree, such as `&["Projects", "2026"]`, and create missing folders while preserving existing hierarchy and table schemas. Folder lookup is case-insensitive. `create_with_attachments` and `append_with_attachments` write by-value attachments, including zero-byte files. Setting an attachment's `content_id` writes the matching `PR_ATTACH_CONTENT_ID` and HTML-reference flag so `cid:` images can render inline. Large bodies, HTML, and attachment data use XBLOCK/XXBLOCK data trees. Multi-level BBT, NBT, and subnode trees and multiple AMap regions are supported.
+`UnicodePstWriter` creates a Unicode PST or opens an existing one and appends messages to folder paths relative to
+the IPM subtree (such as `&["Projects", "2026"]`), creating missing folders. Folder names are matched exactly, without
+case folding. Messages carry recipients, plain text and HTML bodies, attachments (streamed, any size the format allows),
+attached e-mails, categories and further tagged or named properties.
+
+- Every commit is atomic: the header's switch to the new B-tree roots is the commit point. An error before it leaves
+  the file at its last committed state and poisons the session; reopening continues from there.
+- A new file starts as a copy of the bundled template store, which is permute-encoded as Outlook writes it. Appending
+  works on unencrypted and permute-encoded Unicode files, including files Outlook created; cyclic encoding and ANSI
+  files are refused.
+- Blocks a commit replaces are removed from the B-trees and the allocation map, and later allocations reuse that space
+  first-fit. The file is never compacted.
 
 ```rust,no_run
 # use pstsmith::{UnicodePstBatchMessage, UnicodePstFile};
@@ -23,4 +35,5 @@ UnicodePstFile::append_many_with_attachments("export.pst", batch)?;
 # }
 ```
 
-ANSI PST append and encoded/encrypted PSTs remain unsupported. Commits remove superseded blocks from the BBT and AMap, but do not rewrite the file to reclaim their physical holes; prefer larger bulk batches when file size matters.
+See [`docs/UPSTREAM.md`](https://github.com/baozdemir/pstsmith/blob/main/docs/UPSTREAM.md) for how this crate relates to `microsoft/outlook-pst-rs` and
+`dongs0104/outlook-pst-rs`.
