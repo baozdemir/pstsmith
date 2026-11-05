@@ -117,7 +117,8 @@ impl Converter {
     /// Stops the conversion once `flag` is true, for example from a signal handler: the next message added, the next
     /// item [`finish`](Converter::finish) writes, or the attachment being written fails with `interrupted`, and the
     /// conversion does not finish. As on any error, `finish` removes the files it created, and dropping the
-    /// converter removes the staging directory; nothing else is touched.
+    /// converter removes the staging directory; nothing else is touched. A flag set once the last item is written
+    /// stops nothing: the files are then whole.
     pub fn set_cancel_flag(&mut self, flag: Arc<AtomicBool>) {
         self.cancel = Some(flag);
     }
@@ -136,7 +137,8 @@ impl Converter {
     ///   `A/B`;
     /// - any other directory, walked in name order: `.eml` files in a folder per directory (those at its top in a
     ///   folder named after it), MBOX files, Thunderbird `Name.sbd` and Apple Mail `Name.mbox` folders as subfolders,
-    ///   Maildirs as folders; other files are skipped and counted.
+    ///   Maildirs as folders; other files are skipped and counted. A `Name.sbd` or `Name.mbox` directory given on its
+    ///   own is named `Name`.
     ///
     /// # Errors
     ///
@@ -147,7 +149,8 @@ impl Converter {
         // An input such as ".", ".." or "/" has no name of its own: the directory it stands for gives it.
         let name = real_name(input).unwrap_or_else(|| "Imported".to_string());
         if metadata.is_dir() {
-            // A Thunderbird `Name.sbd` or Apple Mail `Name.mbox` directory given on its own is the folder `Name`.
+            // A Thunderbird `Name.sbd` or Apple Mail `Name.mbox` directory given on its own is named `Name` (its
+            // mailboxes become folders at the top, as in any directory; Apple Mail's `mbox` file is the folder `Name`).
             let name = name.strip_suffix(".sbd").or_else(|| name.strip_suffix(".mbox")).filter(|stem| !stem.is_empty()).unwrap_or(&name).to_string();
             if is_maildir(input) {
                 self.add_maildir(input, &name, &["Inbox".to_string()], &[])
@@ -432,7 +435,8 @@ fn companion_file(name: &str) -> bool {
 
 /// The entries of an MBOX file, read as a stream: each one's bytes (mboxrd: one '>' removed from a quoted "From "
 /// line) and the date of its "From " line. A line starting with "From " starts an entry only when it is the file's
-/// first, when it looks like an MBOX "From " line (a sender, a time and a four-digit year), or when its date is written
+/// first, when it looks like an MBOX "From " line (a sender, a time and a four-digit year, see `from_line_date`), or
+/// when its date is written
 /// as in a Date header and a blank line comes before it and a header field after it: an unquoted "From " in a body
 /// (mboxo) does not cut its message.
 struct MboxEntries<R> {
@@ -592,14 +596,16 @@ fn date_header_style(line: &[u8]) -> Option<i64> {
 }
 
 /// An MBOX "From " line (asctime, as mail programs write it): `Some(date)` when the words after the sender end with a
-/// four-digit year, optionally followed by a zone, and one of them is a time ("From sender Mon Jan  1 10:00:00 2024",
-/// also with a zone before or after the year); `Some(None)` when its date cannot be read; `None` when the line is no
-/// MBOX "From " line.
+/// four-digit year and one of them is a time ("From sender Mon Jan  1 10:00:00 2024", also with a zone just before
+/// the year); `Some(None)` when its date cannot be read; `None` when the line is no MBOX "From " line. A zone after
+/// the year (UW c-client, Alpine: "Mon Jan  1 10:00:00 2024 +0000") counts only in that order, a month name and the
+/// time just before the year, so that a body line such as "From 10:00 to 12:00 on 15 March 2024 CET" is none.
 fn from_line_date(line: &[u8]) -> Option<Option<i64>> {
     let mut words = from_line_words(line)?;
     let mut tz = (false, 0, 0);
     let n = words.len();
-    if n >= 2 && ascii_digits(&words[n - 2], 4..=4) {
+    let has_month = |words: &[String]| words.iter().any(|word| MONTHS.iter().any(|month| word.eq_ignore_ascii_case(month)));
+    if n >= 3 && ascii_digits(&words[n - 2], 4..=4) && clock(&words[n - 3]).is_some() && has_month(&words) {
         if let Some(found) = zone(&words[n - 1]) {
             tz = found;
             words.pop();
@@ -609,8 +615,8 @@ fn from_line_date(line: &[u8]) -> Option<Option<i64>> {
     let time = words.iter().find_map(|word| clock(word))?;
     let month = words.iter().find_map(|word| MONTHS.iter().position(|month| word.eq_ignore_ascii_case(month)));
     let day = words.iter().find(|word| ascii_digits(word, 1..=2)).and_then(|word| word.parse::<u8>().ok());
-    // A zone before the year (Google Takeout: "+0000 2024") gives the offset too.
-    if let Some(found) = words.iter().rev().skip(1).find_map(|word| (word.starts_with('+') || word.starts_with('-')).then(|| zone(word)).flatten()) {
+    // A zone just before the year (Google Takeout: "+0000 2024"; System V: "PST 2024") gives the offset too.
+    if let Some(found) = words.len().checked_sub(2).and_then(|at| zone(&words[at])) {
         tz = found;
     }
     Some(match (month, day) {
@@ -662,7 +668,8 @@ fn is_maildir(dir: &Path) -> bool {
 /// `.sbd` directory, Apple Mail's `Name.mbox/mbox`).
 fn labels_route(path: &Path) -> bool {
     let name = file_name(path);
-    let parent = path.parent().and_then(real_name).unwrap_or_default();
+    // The parent of a bare "mbox" is the empty path, which stands for the current directory.
+    let parent = path.parent().map(|parent| if parent.as_os_str().is_empty() { Path::new(".") } else { parent }).and_then(real_name).unwrap_or_default();
     !(path.with_file_name(format!("{name}.msf")).is_file() || parent.ends_with(".sbd") || (name == "mbox" && parent.ends_with(".mbox")))
 }
 
@@ -790,7 +797,7 @@ mod tests {
     ];
 
     /// The asctime cases the oracle's self-test holds too.
-    const ASCTIME_LINES: [(&str, bool); 14] = [
+    const ASCTIME_LINES: [(&str, bool); 20] = [
         ("From a Mon Jan  1 10:00:00 2024", true),
         ("From - Mon Jan  1 10:00:00 2024", true),
         ("From 1@xxx Mon Jan 01 10:01:00 +0000 2024", true),
@@ -805,6 +812,13 @@ mod tests {
         ("From 9:00 to 17:00, 2024", false),
         ("From John Sat, 06 Jan 2024 11:00:00 +0000", false),
         ("From", false),
+        // A zone after the year only in the order mail programs write: a month, then the time just before the year.
+        ("From a Mon Jan  1 10:00 PST 2024", true),
+        ("From 10:00 to 12:00 on 15 March 2024 CET", false),
+        ("From 8:30 to 17:00 on 2 Jan 2024 GMT", false),
+        ("From our office, 10:00 Jan 5 2024 PST", false),
+        ("From noon 12:00 2024 +0100", false),
+        ("From Monday 9:00 AM until Friday 5 January 2024 EST", false),
     ];
 
     #[test]
@@ -827,6 +841,8 @@ mod tests {
         assert_eq!(date("From a Mon Jan  1 10:00:00 2024 +0000\n"), Some(Some(1_704_103_200)));
         assert_eq!(date("From a Mon Jan  1 10:00:00 2024 -0500\n"), Some(Some(1_704_121_200)));
         assert_eq!(date("From a Mon Jan 01 10:00:00 -0500 2024\n"), Some(Some(1_704_121_200)));
+        // A zone name just before the year (System V) gives its offset too.
+        assert_eq!(date("From a Mon Jan  1 10:00:00 PST 2024\n"), Some(Some(1_704_132_000)));
         for (line, accepted) in ASCTIME_LINES {
             assert_eq!(from_line_date(line.as_bytes()).is_some(), accepted, "{line:?}");
         }

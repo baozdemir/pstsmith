@@ -286,5 +286,7 @@ fn a_json_result_with_stdout_closed_is_an_error_not_a_panic() {
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert_eq!(result.status.code(), Some(5), "{stderr}");
     assert!(!stderr.contains("panicked"), "{stderr}");
+    // The error is the first line on stderr, as for every error.
+    assert!(stderr.lines().next().is_some_and(|line| line.starts_with("{\"detail\"") && line.contains("\"error\":\"io\"")), "{stderr}");
     std::fs::remove_dir_all(&dir).unwrap();
 }

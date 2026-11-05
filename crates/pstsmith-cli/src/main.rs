@@ -238,18 +238,19 @@ fn convert_main(args: Vec<String>) -> ExitCode {
                 (Output::File(path), _) => path.display().to_string(),
                 (Output::Directory(path), parts) => format!("{parts} files in {}", path.display()),
             };
+            let mut code = ExitCode::SUCCESS;
+            // The result line first: if stdout is gone, the error is then the first line on stderr, as for any error.
+            if options.json {
+                if let Err(e) = writeln!(io::stdout(), "{}", report.result_line()).and_then(|()| io::stdout().flush()) {
+                    // The files are complete and stay; the caller just cannot be told so on stdout.
+                    code = fail(ConvertError { code: "io", exit_code: 5, item_key: None, detail: format!("the result line could not be written to stdout: {e}") });
+                }
+            }
             let skipped = if report.skipped() > 0 { format!(" ({} left out, see the exclusion record)", report.skipped()) } else { String::new() };
             let messages = if report.written() == 1 { "1 message".to_string() } else { format!("{} messages", report.written()) };
             say!("pstsmith: wrote {messages}{skipped} to {place}");
             for warning in report.warnings() {
                 say!("warning: {warning}");
-            }
-            let mut code = ExitCode::SUCCESS;
-            if options.json {
-                if let Err(e) = writeln!(io::stdout(), "{}", report.result_line()).and_then(|()| io::stdout().flush()) {
-                    // The files are complete; the caller just cannot be told so on stdout.
-                    code = fail(ConvertError { code: "io", exit_code: 5, item_key: None, detail: format!("the result line could not be written to stdout: {e}") });
-                }
             }
             // A signal that came after the last item: the files are complete and stay, but the process still ends
             // by the signal, so that a shell loop running it stops.

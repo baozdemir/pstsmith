@@ -16,7 +16,8 @@ pstsmith --help
 exit code says what failed (2 invalid input, 3 an attachment that does not match its recorded size or hash, 4 an
 output that exists, 5 a writer or I/O failure). A conversion stopped by Ctrl-C removes what it wrote, reports
 `interrupted` and ends by the signal (a shell shows exit status 128 plus its number; on Windows the exit code is
-STATUS_CONTROL_C_EXIT).
+STATUS_CONTROL_C_EXIT). With `--json`, a result line that cannot be written to stdout is an `io` error (exit 5),
+and the files, which are complete, are kept.
 
 The library is the [`pstsmith`](https://crates.io/crates/pstsmith) crate; see the
 [repository](https://github.com/baozdemir/pstsmith) for how its output was verified.

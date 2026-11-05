@@ -119,12 +119,13 @@ def date_header_style(line):
 
 
 def asctime_style(line):
-    """Whether the words after the sender end with a four-digit year, optionally followed by a zone, and one is a
-    time."""
+    """Whether the words after the sender end with a four-digit year and one is a time; a zone after the year counts
+    only after a month name and with the time just before the year."""
     words = from_line_words(line)
     if words is None:
         return False
-    if len(words) >= 2 and digits(words[-2], 4, 4) and zone(words[-1]):
+    has_month = any(ascii_lower(w) in MONTHS for w in words)
+    if len(words) >= 3 and digits(words[-2], 4, 4) and clock(words[-3]) is not None and has_month and zone(words[-1]):
         words = words[:-1]
     if not words or not digits(words[-1], 4, 4):
         return False
@@ -167,6 +168,12 @@ ASCTIME_LINES = [
     ("From 9:00 to 17:00, 2024", False),
     ("From John Sat, 06 Jan 2024 11:00:00 +0000", False),
     ("From", False),
+    ("From a Mon Jan  1 10:00 PST 2024", True),
+    ("From 10:00 to 12:00 on 15 March 2024 CET", False),
+    ("From 8:30 to 17:00 on 2 Jan 2024 GMT", False),
+    ("From our office, 10:00 Jan 5 2024 PST", False),
+    ("From noon 12:00 2024 +0100", False),
+    ("From Monday 9:00 AM until Friday 5 January 2024 EST", False),
 ]
 
 
@@ -264,10 +271,19 @@ def maildir_messages(path, folder, prefix, out):
             maildir_messages(entry, sub_path, sub_path, out)
 
 
+def is_mbox(path):
+    """As pstsmith: the first line that is not empty, after a UTF-8 byte order mark, starts with "From "."""
+    start = path.read_bytes()[:4096]
+    if start.startswith(b"\xef\xbb\xbf"):
+        start = start[3:]
+    return start.lstrip(b"\r\n").startswith(b"From ")
+
+
 def labels_route(path):
     """Whether an MBOX's Gmail labels choose its messages' folders: not for a mail program's folder (a file beside its
     Thunderbird .msf index or inside a .sbd directory, Apple Mail's Name.mbox/mbox)."""
-    parent = path.resolve().parent.name
+    # The parent's own name; only "." (or nothing) is resolved, so a symlinked file is judged where it is listed.
+    parent = path.parent.name or path.parent.resolve().name
     return not ((path.parent / (path.name + ".msf")).is_file() or parent.endswith(".sbd")
                 or (path.name == "mbox" and parent.endswith(".mbox")))
 
@@ -275,13 +291,17 @@ def labels_route(path):
 def source_messages(input_path):
     """[(folder path, raw bytes, flags)] in pstsmith's documented order."""
     out = []
-    name = input_path.name
+    name = input_path.name or input_path.resolve().name
     if input_path.is_dir():
+        # A Name.sbd or Name.mbox directory given on its own is named Name.
+        for suffix in (".sbd", ".mbox"):
+            if name.endswith(suffix) and len(name) > len(suffix):
+                name = name[:-len(suffix)]
         if is_maildir(input_path):
             maildir_messages(input_path, ["Inbox"], [], out)
         else:
             walk(input_path, [], name, out)
-    elif input_path.read_bytes().startswith(b"From "):
+    elif is_mbox(input_path):
         stem = name[:-5] if name.lower().endswith(".mbox") else name
         out += [([stem], raw, {"routed": labels_route(input_path)}) for raw in mbox_messages(input_path)]
     else:
@@ -303,7 +323,7 @@ def walk(directory, folder, top, out):
             here = folder or [top]
             if entry.name.lower().endswith(".eml"):
                 out.append((here, entry.read_bytes(), {}))
-            elif entry.read_bytes()[:5] == b"From ":
+            elif is_mbox(entry):
                 target = here if entry.name == "mbox" else folder + [entry.name[:-5] if entry.name.lower().endswith(".mbox") else entry.name]
                 out += [(target, raw, {"routed": labels_route(entry)}) for raw in mbox_messages(entry)]
 
