@@ -5,7 +5,9 @@
 use sha2::{Digest, Sha256};
 
 fn main() {
-    let path = std::env::args().nth(1).expect("usage: pst-node-digest FILE.pst");
+    let path = std::env::args()
+        .nth(1)
+        .expect("usage: pst-node-digest FILE.pst");
     let nodes = match pstsmith::debug_node_streams(&path) {
         Ok(nodes) => nodes,
         Err(error) => {
@@ -16,8 +18,13 @@ fn main() {
     for (nid, parent, data, subnodes) in nodes {
         let sub: Vec<serde_json::Value> = subnodes
             .iter()
-            .map(|(path, data)| serde_json::json!([path, data.len(), format!("{:x}", Sha256::digest(data))]))
+            .map(|(path, data)| {
+                serde_json::json!([path, data.len(), format!("{:x}", Sha256::digest(data))])
+            })
             .collect();
-        println!("{}", serde_json::json!({"nid": nid, "parent": parent, "len": data.len(), "sha256": format!("{:x}", Sha256::digest(&data)), "sub": sub}));
+        println!(
+            "{}",
+            serde_json::json!({"nid": nid, "parent": parent, "len": data.len(), "sha256": format!("{:x}", Sha256::digest(&data)), "sub": sub})
+        );
     }
 }

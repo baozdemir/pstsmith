@@ -38,7 +38,10 @@ pub mod heap {
     }
 
     fn count_call(size: usize) {
-        let class = CLASS_BOUNDS.iter().position(|bound| size <= *bound).unwrap_or(CLASS_BOUNDS.len());
+        let class = CLASS_BOUNDS
+            .iter()
+            .position(|bound| size <= *bound)
+            .unwrap_or(CLASS_BOUNDS.len());
         CALLS[class].fetch_add(1, Relaxed);
         BYTES[class].fetch_add(size, Relaxed);
         if PAUSED.try_with(std::cell::Cell::get).unwrap_or(false) {
@@ -78,13 +81,19 @@ pub mod heap {
 
     /// The bytes requested per class since the last call, as a JSON array; they are reset.
     pub fn take_bytes_json() -> String {
-        let counts: Vec<String> = BYTES.iter().map(|count| count.swap(0, Relaxed).to_string()).collect();
+        let counts: Vec<String> = BYTES
+            .iter()
+            .map(|count| count.swap(0, Relaxed).to_string())
+            .collect();
         format!("[{}]", counts.join(","))
     }
 
     /// The allocation calls per class since the last call, as a JSON array; they are reset.
     pub fn take_calls_json() -> String {
-        let counts: Vec<String> = CALLS.iter().map(|count| count.swap(0, Relaxed).to_string()).collect();
+        let counts: Vec<String> = CALLS
+            .iter()
+            .map(|count| count.swap(0, Relaxed).to_string())
+            .collect();
         format!("[{}]", counts.join(","))
     }
 
@@ -285,15 +294,23 @@ pub(crate) fn contents_after_commit(report: impl FnOnce() -> String) {
         let Some(path) = std::env::var_os("PST_INSTRUMENT_OUT") else {
             return;
         };
-        let Ok(mut file) = std::fs::OpenOptions::new().read(true).write(true).open(path) else {
+        let Ok(mut file) = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)
+        else {
             return;
         };
         // The last record ends with "}\n": reopen it and add the field.
-        let Ok(len) = file.seek(SeekFrom::End(0)) else { return };
+        let Ok(len) = file.seek(SeekFrom::End(0)) else {
+            return;
+        };
         if len < 2 || file.set_len(len - 2).is_err() {
             return;
         }
-        let _ = file.seek(SeekFrom::End(0)).and_then(|_| file.write_all(format!(",\"contents\":{}}}\n", report()).as_bytes()));
+        let _ = file
+            .seek(SeekFrom::End(0))
+            .and_then(|_| file.write_all(format!(",\"contents\":{}}}\n", report()).as_bytes()));
     }
 }
 
@@ -324,9 +341,18 @@ pub(crate) fn commit_finished(structures: impl FnOnce() -> String) {
         let ops = ops::take_json();
         #[cfg(not(feature = "op-counters"))]
         let ops = String::from("null");
-        let micros = STARTED.with(|cell| cell.get()).map_or(0, |started| started.elapsed().as_micros());
-        let line = format!("{{\"commit\":{commit},\"wall_us\":{micros},{heap},\"ops\":{ops},\"structures\":{}}}\n", structures());
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        let micros = STARTED
+            .with(|cell| cell.get())
+            .map_or(0, |started| started.elapsed().as_micros());
+        let line = format!(
+            "{{\"commit\":{commit},\"wall_us\":{micros},{heap},\"ops\":{ops},\"structures\":{}}}\n",
+            structures()
+        );
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
             let _ = file.write_all(line.as_bytes());
         }
     }

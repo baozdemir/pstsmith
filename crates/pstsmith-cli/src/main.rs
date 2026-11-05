@@ -28,10 +28,12 @@
 static COUNTING: pstsmith::measurement::heap::Counting = pstsmith::measurement::heap::Counting;
 
 use pstsmith::convert::mail::Converter;
-use pstsmith::convert::{convert_manifest, ConvertError, ManifestOptions, Output, Report, FILE_SIZE_CHOICES};
+use pstsmith::convert::{
+    convert_manifest, ConvertError, ManifestOptions, Output, Report, FILE_SIZE_CHOICES,
+};
+use std::io::Write;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::io::Write;
 use std::{env, io, path::PathBuf, process::ExitCode};
 
 /// Writes a line to stderr. A stderr that is gone (a closed terminal, a pipe whose reader exited) is not an error of
@@ -80,7 +82,12 @@ struct Options {
 }
 
 fn usage(detail: impl Into<String>) -> ConvertError {
-    ConvertError { code: "usage", exit_code: 2, item_key: None, detail: detail.into() }
+    ConvertError {
+        code: "usage",
+        exit_code: 2,
+        item_key: None,
+        detail: detail.into(),
+    }
 }
 
 fn parse_args(args: Vec<String>) -> Result<Options, ConvertError> {
@@ -89,23 +96,50 @@ fn parse_args(args: Vec<String>) -> Result<Options, ConvertError> {
     let mut output_dir = None;
     let mut file_size = None;
     let mut excluded = None;
-    let ManifestOptions { mut batch_items, mut batch_bytes, .. } = ManifestOptions::default();
+    let ManifestOptions {
+        mut batch_items,
+        mut batch_bytes,
+        ..
+    } = ManifestOptions::default();
     let mut args = args.into_iter();
     while let Some(flag) = args.next() {
-        let value = args.next().ok_or_else(|| usage(format!("missing value for {flag}")))?;
+        let value = args
+            .next()
+            .ok_or_else(|| usage(format!("missing value for {flag}")))?;
         match flag.as_str() {
             "--manifest" => manifest = Some(PathBuf::from(value)),
             "--output" => output = Some(PathBuf::from(value)),
             "--output-dir" => output_dir = Some(PathBuf::from(value)),
             "--max-file-size" => {
-                let size = FILE_SIZE_CHOICES.iter().find(|(name, _)| *name == value).map(|(_, size)| *size);
-                file_size = Some(size.ok_or_else(|| usage("--max-file-size must be 1GB, 2GB, 5GB or 10GB"))?);
+                let size = FILE_SIZE_CHOICES
+                    .iter()
+                    .find(|(name, _)| *name == value)
+                    .map(|(_, size)| *size);
+                file_size = Some(
+                    size.ok_or_else(|| usage("--max-file-size must be 1GB, 2GB, 5GB or 10GB"))?,
+                );
             }
             #[cfg(feature = "test-file-sizes")]
-            "--max-file-bytes" => file_size = Some(value.parse().ok().filter(|size| *size > 0).ok_or_else(|| usage("--max-file-bytes must be a positive integer"))?),
+            "--max-file-bytes" => {
+                file_size = Some(
+                    value
+                        .parse()
+                        .ok()
+                        .filter(|size| *size > 0)
+                        .ok_or_else(|| usage("--max-file-bytes must be a positive integer"))?,
+                )
+            }
             "--excluded" => excluded = Some(PathBuf::from(value)),
-            "--batch" => batch_items = value.parse().map_err(|_| usage("--batch must be a positive integer"))?,
-            "--batch-bytes" => batch_bytes = value.parse().map_err(|_| usage("--batch-bytes must be a positive integer"))?,
+            "--batch" => {
+                batch_items = value
+                    .parse()
+                    .map_err(|_| usage("--batch must be a positive integer"))?
+            }
+            "--batch-bytes" => {
+                batch_bytes = value
+                    .parse()
+                    .map_err(|_| usage("--batch-bytes must be a positive integer"))?
+            }
             other => return Err(usage(format!("unknown argument {other}"))),
         }
     }
@@ -143,7 +177,11 @@ fn main() -> ExitCode {
         Ok(options) => options,
         Err(error) => return fail(error),
     };
-    match convert_manifest(&options.manifest, &options.output, &options.manifest_options) {
+    match convert_manifest(
+        &options.manifest,
+        &options.output,
+        &options.manifest_options,
+    ) {
         Ok(report) => {
             println!("{}", report.result_line());
             ExitCode::SUCCESS
@@ -168,7 +206,11 @@ fn parse_convert(args: Vec<String>) -> Result<ConvertOptions, ConvertError> {
     let mut excluded = None;
     let mut temp_dir = None;
     let mut json = false;
-    let ManifestOptions { mut batch_items, mut batch_bytes, .. } = ManifestOptions::default();
+    let ManifestOptions {
+        mut batch_items,
+        mut batch_bytes,
+        ..
+    } = ManifestOptions::default();
     let mut args = args.into_iter();
     let mut positional_only = false;
     while let Some(arg) = args.next() {
@@ -180,20 +222,40 @@ fn parse_convert(args: Vec<String>) -> Result<ConvertOptions, ConvertError> {
             "--" => positional_only = true,
             "--json" => json = true,
             flag => {
-                let value = args.next().ok_or_else(|| usage(format!("missing value for {flag}")))?;
+                let value = args
+                    .next()
+                    .ok_or_else(|| usage(format!("missing value for {flag}")))?;
                 match flag {
                     "-o" | "--output" => output = Some(PathBuf::from(value)),
                     "--output-dir" => output_dir = Some(PathBuf::from(value)),
                     "--max-file-size" => {
-                        let size = FILE_SIZE_CHOICES.iter().find(|(name, _)| *name == value).map(|(_, size)| *size);
-                        file_size = Some(size.ok_or_else(|| usage("--max-file-size must be 1GB, 2GB, 5GB or 10GB"))?);
+                        let size = FILE_SIZE_CHOICES
+                            .iter()
+                            .find(|(name, _)| *name == value)
+                            .map(|(_, size)| *size);
+                        file_size = Some(size.ok_or_else(|| {
+                            usage("--max-file-size must be 1GB, 2GB, 5GB or 10GB")
+                        })?);
                     }
                     #[cfg(feature = "test-file-sizes")]
-                    "--max-file-bytes" => file_size = Some(value.parse().ok().filter(|size| *size > 0).ok_or_else(|| usage("--max-file-bytes must be a positive integer"))?),
+                    "--max-file-bytes" => {
+                        file_size =
+                            Some(value.parse().ok().filter(|size| *size > 0).ok_or_else(|| {
+                                usage("--max-file-bytes must be a positive integer")
+                            })?)
+                    }
                     "--excluded" => excluded = Some(PathBuf::from(value)),
                     "--temp-dir" => temp_dir = Some(PathBuf::from(value)),
-                    "--batch" => batch_items = value.parse().map_err(|_| usage("--batch must be a positive integer"))?,
-                    "--batch-bytes" => batch_bytes = value.parse().map_err(|_| usage("--batch-bytes must be a positive integer"))?,
+                    "--batch" => {
+                        batch_items = value
+                            .parse()
+                            .map_err(|_| usage("--batch must be a positive integer"))?
+                    }
+                    "--batch-bytes" => {
+                        batch_bytes = value
+                            .parse()
+                            .map_err(|_| usage("--batch-bytes must be a positive integer"))?
+                    }
                     other => return Err(usage(format!("unknown argument {other}"))),
                 }
             }
@@ -208,9 +270,22 @@ fn parse_convert(args: Vec<String>) -> Result<ConvertOptions, ConvertError> {
         _ => return Err(usage("usage: pstsmith convert INPUT... (-o FILE.pst | --output-dir DIR) [--max-file-size SIZE] (see --help)")),
     };
     if inputs.is_empty() {
-        return Err(usage("usage: pstsmith convert INPUT... needs at least one input (see --help)"));
+        return Err(usage(
+            "usage: pstsmith convert INPUT... needs at least one input (see --help)",
+        ));
     }
-    Ok(ConvertOptions { inputs, output, manifest_options: ManifestOptions { max_file_size: file_size, excluded, batch_items, batch_bytes }, temp_dir, json })
+    Ok(ConvertOptions {
+        inputs,
+        output,
+        manifest_options: ManifestOptions {
+            max_file_size: file_size,
+            excluded,
+            batch_items,
+            batch_bytes,
+        },
+        temp_dir,
+        json,
+    })
 }
 
 fn convert_main(args: Vec<String>) -> ExitCode {
@@ -221,7 +296,9 @@ fn convert_main(args: Vec<String>) -> ExitCode {
     let stop = Stop::install();
     let run = || -> Result<Report, ConvertError> {
         let mut converter = match &options.temp_dir {
-            Some(dir) => Converter::create_in(options.output.clone(), &options.manifest_options, dir)?,
+            Some(dir) => {
+                Converter::create_in(options.output.clone(), &options.manifest_options, dir)?
+            }
             None => Converter::create(options.output.clone(), &options.manifest_options)?,
         };
         converter.set_cancel_flag(Arc::clone(&stop.flag));
@@ -241,13 +318,28 @@ fn convert_main(args: Vec<String>) -> ExitCode {
             let mut code = ExitCode::SUCCESS;
             // The result line first: if stdout is gone, the error is then the first line on stderr, as for any error.
             if options.json {
-                if let Err(e) = writeln!(io::stdout(), "{}", report.result_line()).and_then(|()| io::stdout().flush()) {
+                if let Err(e) = writeln!(io::stdout(), "{}", report.result_line())
+                    .and_then(|()| io::stdout().flush())
+                {
                     // The files are complete and stay; the caller just cannot be told so on stdout.
-                    code = fail(ConvertError { code: "io", exit_code: 5, item_key: None, detail: format!("the result line could not be written to stdout: {e}") });
+                    code = fail(ConvertError {
+                        code: "io",
+                        exit_code: 5,
+                        item_key: None,
+                        detail: format!("the result line could not be written to stdout: {e}"),
+                    });
                 }
             }
-            let skipped = if report.skipped() > 0 { format!(" ({} left out, see the exclusion record)", report.skipped()) } else { String::new() };
-            let messages = if report.written() == 1 { "1 message".to_string() } else { format!("{} messages", report.written()) };
+            let skipped = if report.skipped() > 0 {
+                format!(" ({} left out, see the exclusion record)", report.skipped())
+            } else {
+                String::new()
+            };
+            let messages = if report.written() == 1 {
+                "1 message".to_string()
+            } else {
+                format!("{} messages", report.written())
+            };
             say!("pstsmith: wrote {messages}{skipped} to {place}");
             for warning in report.warnings() {
                 say!("warning: {warning}");
@@ -284,9 +376,16 @@ struct Stop {
 
 impl Stop {
     fn install() -> Self {
-        let stop = Self { flag: Arc::new(AtomicBool::new(false)), signal: Arc::new(AtomicUsize::new(0)) };
+        let stop = Self {
+            flag: Arc::new(AtomicBool::new(false)),
+            signal: Arc::new(AtomicUsize::new(0)),
+        };
         #[cfg(unix)]
-        let signals = [signal_hook::consts::TERM_SIGNALS, &[signal_hook::consts::SIGHUP]].concat();
+        let signals = [
+            signal_hook::consts::TERM_SIGNALS,
+            &[signal_hook::consts::SIGHUP],
+        ]
+        .concat();
         #[cfg(not(unix))]
         let signals = signal_hook::consts::TERM_SIGNALS.to_vec();
         for number in signals {
@@ -296,8 +395,16 @@ impl Stop {
             // In this order: the first signal finds the flag false, stores its number and then sets the flag (so the
             // number is there when the flag is seen, also when the handler runs on another thread, as on Windows);
             // a second signal exits.
-            let _ = signal_hook::flag::register_conditional_shutdown(number, 128 + number, Arc::clone(&stop.flag));
-            let _ = signal_hook::flag::register_usize(number, Arc::clone(&stop.signal), number as usize);
+            let _ = signal_hook::flag::register_conditional_shutdown(
+                number,
+                128 + number,
+                Arc::clone(&stop.flag),
+            );
+            let _ = signal_hook::flag::register_usize(
+                number,
+                Arc::clone(&stop.signal),
+                number as usize,
+            );
             let _ = signal_hook::flag::register(number, Arc::clone(&stop.flag));
         }
         stop
@@ -331,7 +438,8 @@ fn ignored_at_start(signal: i32) -> bool {
     // SAFETY: with a null new action, sigaction only reads the current one into `old`, which it fully writes.
     unsafe {
         let mut old: libc::sigaction = std::mem::zeroed();
-        libc::sigaction(signal, std::ptr::null(), &mut old) == 0 && old.sa_sigaction == libc::SIG_IGN
+        libc::sigaction(signal, std::ptr::null(), &mut old) == 0
+            && old.sa_sigaction == libc::SIG_IGN
     }
 }
 
@@ -358,11 +466,26 @@ mod tests {
 
     #[test]
     fn a_single_file_that_is_too_large_points_to_parts() {
-        let too_large = ConvertError { code: "output-too-large", exit_code: 2, item_key: None, detail: String::new() };
-        let hint = convert_hint(&too_large, &Output::File("archive.pst".into())).expect("a hint for one file");
+        let too_large = ConvertError {
+            code: "output-too-large",
+            exit_code: 2,
+            item_key: None,
+            detail: String::new(),
+        };
+        let hint = convert_hint(&too_large, &Output::File("archive.pst".into()))
+            .expect("a hint for one file");
         assert!(hint.contains("--output-dir"), "{hint}");
-        assert_eq!(convert_hint(&too_large, &Output::Directory("parts".into())), None);
-        let other = ConvertError { code: "input-unreadable", ..too_large };
-        assert_eq!(convert_hint(&other, &Output::File("archive.pst".into())), None);
+        assert_eq!(
+            convert_hint(&too_large, &Output::Directory("parts".into())),
+            None
+        );
+        let other = ConvertError {
+            code: "input-unreadable",
+            ..too_large
+        };
+        assert_eq!(
+            convert_hint(&other, &Output::File("archive.pst".into())),
+            None
+        );
     }
 }

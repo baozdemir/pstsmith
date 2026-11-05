@@ -6,8 +6,13 @@
 //! dropped; every other label becomes a category.
 
 /// Gmail's system labels that decide the folder, and the Outlook default folder each one becomes.
-pub(crate) const SYSTEM_FOLDERS: &[(&str, &str)] =
-    &[("Inbox", "Inbox"), ("Sent", "Sent Items"), ("Drafts", "Drafts"), ("Spam", "Junk Email"), ("Trash", "Deleted Items")];
+pub(crate) const SYSTEM_FOLDERS: &[(&str, &str)] = &[
+    ("Inbox", "Inbox"),
+    ("Sent", "Sent Items"),
+    ("Drafts", "Drafts"),
+    ("Spam", "Junk Email"),
+    ("Trash", "Deleted Items"),
+];
 
 /// The folder of a labelled message that has none of the system folder labels.
 pub(crate) const ARCHIVE_FOLDER: &str = "Archive";
@@ -40,7 +45,11 @@ fn split(value: &str) -> Vec<String> {
         }
     }
     labels.push(current);
-    labels.into_iter().map(|label| label.trim().to_string()).filter(|label| !label.is_empty()).collect()
+    labels
+        .into_iter()
+        .map(|label| label.trim().to_string())
+        .filter(|label| !label.is_empty())
+        .collect()
 }
 
 pub(crate) fn parse(value: &str) -> Labels {
@@ -54,7 +63,12 @@ pub(crate) fn parse(value: &str) -> Labels {
     for label in &labels {
         let system = SYSTEM_FOLDERS.iter().any(|(name, _)| name == label);
         let tab = label.starts_with("Category ");
-        if system || tab || label == "Unread" || DROPPED.contains(&label.as_str()) || !seen.insert(label.as_str()) {
+        if system
+            || tab
+            || label == "Unread"
+            || DROPPED.contains(&label.as_str())
+            || !seen.insert(label.as_str())
+        {
             continue;
         }
         categories.push(label.clone());
@@ -73,11 +87,16 @@ mod tests {
 
     #[test]
     fn gmail_labels_rules() {
-        let labels = parse(r#"Inbox,Important,Unread,Category Updates,Starred,"Projects, 2026",Müşteri,Opened"#);
+        let labels = parse(
+            r#"Inbox,Important,Unread,Category Updates,Starred,"Projects, 2026",Müşteri,Opened"#,
+        );
         assert_eq!(labels.folder, "Inbox");
         assert!(labels.unread);
         assert!(!labels.draft);
-        assert_eq!(labels.categories, vec!["Starred", "Projects, 2026", "Müşteri"]);
+        assert_eq!(
+            labels.categories,
+            vec!["Starred", "Projects, 2026", "Müşteri"]
+        );
     }
 
     #[test]
@@ -95,7 +114,11 @@ mod tests {
         let value: Vec<String> = (0..200_000).map(|n| format!("label {n}")).collect();
         let start = std::time::Instant::now();
         assert_eq!(parse(&value.join(",")).categories.len(), 200_000);
-        assert!(start.elapsed() < std::time::Duration::from_secs(2), "{:?}", start.elapsed());
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(2),
+            "{:?}",
+            start.elapsed()
+        );
     }
 
     #[test]

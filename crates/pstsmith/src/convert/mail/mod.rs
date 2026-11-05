@@ -60,7 +60,11 @@ pub(crate) mod test_stage {
     impl Stage for MemoryStage {
         fn stage(&mut self, data: &[u8]) -> io::Result<Staged> {
             self.files.push(data.to_vec());
-            Ok(Staged { path: format!("mem:{}", self.files.len() - 1), size: data.len() as u64, sha256: sha256_hex(data) })
+            Ok(Staged {
+                path: format!("mem:{}", self.files.len() - 1),
+                size: data.len() as u64,
+                sha256: sha256_hex(data),
+            })
         }
     }
 }

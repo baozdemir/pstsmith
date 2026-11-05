@@ -21,8 +21,8 @@
 use super::*;
 use crate::measurement::count_op;
 use std::cell::RefCell;
-use std::ops::Bound;
 use std::collections::VecDeque;
+use std::ops::Bound;
 use std::path::PathBuf;
 
 /// Lookup of a block's B-tree entry by its search key, from the committed state plus a commit's pending changes.
@@ -36,7 +36,8 @@ pub(crate) trait BlockLookup {
 
 impl BlockLookup for [UnicodeBlockBTreeEntry] {
     fn lookup_block(&self, key: u64) -> io::Result<Option<UnicodeBlockBTreeEntry>> {
-        Ok(self.binary_search_by_key(&key, BTreeEntry::key)
+        Ok(self
+            .binary_search_by_key(&key, BTreeEntry::key)
             .ok()
             .map(|index| self[index]))
     }
@@ -73,7 +74,13 @@ impl DiskEntry for UnicodeBlockBTreeEntry {
     fn read_page(file: &mut File, page_ref: UnicodePageRef) -> io::Result<TreePage<Self>> {
         Ok(match UnicodeBlockBTree::read(file, page_ref)? {
             RootBTreePage::Leaf(page) => TreePage::Leaf(page.entries().to_vec()),
-            RootBTreePage::Intermediate(page, ..) => TreePage::Inner(page.level(), page.entries().iter().map(|entry| (entry.key(), entry.block())).collect()),
+            RootBTreePage::Intermediate(page, ..) => TreePage::Inner(
+                page.level(),
+                page.entries()
+                    .iter()
+                    .map(|entry| (entry.key(), entry.block()))
+                    .collect(),
+            ),
         })
     }
 }
@@ -85,7 +92,13 @@ impl DiskEntry for UnicodeNodeBTreeEntry {
     fn read_page(file: &mut File, page_ref: UnicodePageRef) -> io::Result<TreePage<Self>> {
         Ok(match UnicodeNodeBTree::read(file, page_ref)? {
             RootBTreePage::Leaf(page) => TreePage::Leaf(page.entries().to_vec()),
-            RootBTreePage::Intermediate(page, ..) => TreePage::Inner(page.level(), page.entries().iter().map(|entry| (entry.key(), entry.block())).collect()),
+            RootBTreePage::Intermediate(page, ..) => TreePage::Inner(
+                page.level(),
+                page.entries()
+                    .iter()
+                    .map(|entry| (entry.key(), entry.block()))
+                    .collect(),
+            ),
         })
     }
 }
@@ -105,8 +118,13 @@ pub(crate) fn encode_btree_page(
     mut write_entry: impl FnMut(usize, &mut &mut [u8]) -> io::Result<()>,
 ) -> io::Result<[u8; PAGE_SIZE]> {
     const ENTRIES: usize = 488;
-    if count > usize::from(max_entries) || usize::from(max_entries) * usize::from(entry_size) > ENTRIES {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "a B-tree page cannot hold these entries"));
+    if count > usize::from(max_entries)
+        || usize::from(max_entries) * usize::from(entry_size) > ENTRIES
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "a B-tree page cannot hold these entries",
+        ));
     }
     let mut page = [0_u8; PAGE_SIZE];
     for index in 0..count {
@@ -117,14 +135,17 @@ pub(crate) fn encode_btree_page(
     page[ENTRIES..ENTRIES + 4].copy_from_slice(&[count as u8, max_entries, entry_size, level]);
     let crc = crate::crc::compute_crc(0, &page[..496]);
     let signature = page_type.signature(page_ref.index().index(), page_ref.block().into_u64());
-    UnicodePageTrailer::new(page_type, signature, page_ref.block(), crc).write(&mut &mut page[496..])?;
+    UnicodePageTrailer::new(page_type, signature, page_ref.block(), crc)
+        .write(&mut &mut page[496..])?;
     Ok(page)
 }
 
 /// The child of an intermediate page whose key range holds `key`: child `i` takes the keys from its key up to the next
 /// child's key; the first child also takes smaller keys.
 fn child_for(children: &[(u64, UnicodePageRef)], key: u64) -> usize {
-    children.partition_point(|(first, _)| *first <= key).saturating_sub(1)
+    children
+        .partition_point(|(first, _)| *first <= key)
+        .saturating_sub(1)
 }
 
 /// A B-tree kept on disk. The session holds only the root and a bounded cache of decoded pages; a lookup reads the
@@ -145,15 +166,22 @@ pub(crate) enum PageContent<'a, E> {
     Inner(u8, &'a [(u64, UnicodePageRef)]),
 }
 
-
 impl<E: DiskEntry> DiskTree<E> {
     fn open(path: &Path, root: UnicodePageRef) -> io::Result<Self> {
-        Ok(Self { root, reader: RefCell::new(File::open(path)?), cache: RefCell::new((HashMap::new(), VecDeque::new())) })
+        Ok(Self {
+            root,
+            reader: RefCell::new(File::open(path)?),
+            cache: RefCell::new((HashMap::new(), VecDeque::new())),
+        })
     }
 
     /// A tree read through an already open handle (read-only uses).
     fn over(file: File, root: UnicodePageRef) -> Self {
-        Self { root, reader: RefCell::new(file), cache: RefCell::new((HashMap::new(), VecDeque::new())) }
+        Self {
+            root,
+            reader: RefCell::new(file),
+            cache: RefCell::new((HashMap::new(), VecDeque::new())),
+        }
     }
 
     fn page(&self, page_ref: UnicodePageRef) -> io::Result<Rc<TreePage<E>>> {
@@ -190,7 +218,12 @@ impl<E: DiskEntry> DiskTree<E> {
         let mut page_ref = page_ref;
         for _ in 0..=8 {
             match &*self.page(page_ref)? {
-                TreePage::Leaf(items) => return Ok(items.binary_search_by_key(&key, BTreeEntry::key).ok().map(|index| items[index])),
+                TreePage::Leaf(items) => {
+                    return Ok(items
+                        .binary_search_by_key(&key, BTreeEntry::key)
+                        .ok()
+                        .map(|index| items[index]))
+                }
                 TreePage::Inner(_, children) => page_ref = children[child_for(children, key)].1,
             }
         }
@@ -203,7 +236,12 @@ impl<E: DiskEntry> DiskTree<E> {
         for _ in 0..=8 {
             match &*self.page(page_ref)? {
                 TreePage::Leaf(items) => return Ok(items.last().copied()),
-                TreePage::Inner(_, children) => page_ref = children.last().ok_or(PstError::InvalidBTreePage(page_ref.index().index()))?.1,
+                TreePage::Inner(_, children) => {
+                    page_ref = children
+                        .last()
+                        .ok_or(PstError::InvalidBTreePage(page_ref.index().index()))?
+                        .1
+                }
             }
         }
         Err(PstError::InvalidBTreePage(page_ref.index().index()).into())
@@ -230,7 +268,9 @@ impl<E: DiskEntry> DiskTree<E> {
             };
             match &*page {
                 TreePage::Leaf(items) => items.iter().for_each(&mut visit),
-                TreePage::Inner(_, children) => stack.extend(children.iter().rev().map(|(_, child)| (*child, depth + 1))),
+                TreePage::Inner(_, children) => {
+                    stack.extend(children.iter().rev().map(|(_, child)| (*child, depth + 1)))
+                }
             }
         }
         Ok(())
@@ -243,7 +283,13 @@ impl<E: DiskEntry> DiskTree<E> {
     }
 
     /// Write one new page (copy on write): a new page ID and 512 bytes of free space; the page joins the cache.
-    fn write_page(&self, file: &mut File, page: TreePage<E>, next_page: &mut UnicodePageId, space: &mut FileSpace) -> io::Result<(u64, UnicodePageRef)> {
+    fn write_page(
+        &self,
+        file: &mut File,
+        page: TreePage<E>,
+        next_page: &mut UnicodePageId,
+        space: &mut FileSpace,
+    ) -> io::Result<(u64, UnicodePageRef)> {
         let content = match &page {
             TreePage::Leaf(items) => PageContent::Leaf(items),
             TreePage::Inner(level, children) => PageContent::Inner(*level, children),
@@ -257,7 +303,13 @@ impl<E: DiskEntry> DiskTree<E> {
     /// the cache: the right edge writes its pages this way. A streamed value's pages are not read again in the session
     /// (a lookup of one reads it from disk), and caching each would fill the cache with them, one allocation per page,
     /// until it held TREE_CACHE_CAP of them.
-    fn write_content(&self, file: &mut File, content: PageContent<'_, E>, next_page: &mut UnicodePageId, space: &mut FileSpace) -> io::Result<(u64, UnicodePageRef)> {
+    fn write_content(
+        &self,
+        file: &mut File,
+        content: PageContent<'_, E>,
+        next_page: &mut UnicodePageId,
+        space: &mut FileSpace,
+    ) -> io::Result<(u64, UnicodePageRef)> {
         count_op!(BTREE_PAGES_PLANNED, 1);
         let id = *next_page;
         *next_page = next_page.next()?;
@@ -265,14 +317,39 @@ impl<E: DiskEntry> DiskTree<E> {
         let page_ref = UnicodePageRef::new(id, UnicodeByteIndex::new(offset));
         let (first, bytes) = match content {
             PageContent::Leaf(items) => (
-                items.first().ok_or_else(|| io::Error::other("an empty B-tree page"))?.key(),
-                encode_btree_page(items.len(), E::LEAF_MAX as u8, E::LEAF_ENTRY_SIZE, 0, E::PAGE_TYPE, page_ref, |index, slot| <E as BTreeEntryReadWrite>::write(&items[index], slot))?,
+                items
+                    .first()
+                    .ok_or_else(|| io::Error::other("an empty B-tree page"))?
+                    .key(),
+                encode_btree_page(
+                    items.len(),
+                    E::LEAF_MAX as u8,
+                    E::LEAF_ENTRY_SIZE,
+                    0,
+                    E::PAGE_TYPE,
+                    page_ref,
+                    |index, slot| <E as BTreeEntryReadWrite>::write(&items[index], slot),
+                )?,
             ),
             PageContent::Inner(level, children) => (
-                children.first().ok_or_else(|| io::Error::other("an empty B-tree page"))?.0,
-                encode_btree_page(children.len(), INNER_MAX as u8, 24, level, E::PAGE_TYPE, page_ref, |index, slot| {
-                    <UnicodeBTreePageEntry as BTreeEntryReadWrite>::write(&UnicodeBTreePageEntry::new(children[index].0, children[index].1), slot)
-                })?,
+                children
+                    .first()
+                    .ok_or_else(|| io::Error::other("an empty B-tree page"))?
+                    .0,
+                encode_btree_page(
+                    children.len(),
+                    INNER_MAX as u8,
+                    24,
+                    level,
+                    E::PAGE_TYPE,
+                    page_ref,
+                    |index, slot| {
+                        <UnicodeBTreePageEntry as BTreeEntryReadWrite>::write(
+                            &UnicodeBTreePageEntry::new(children[index].0, children[index].1),
+                            slot,
+                        )
+                    },
+                )?,
             ),
         };
         write_at(file, offset, &bytes)?;
@@ -282,7 +359,14 @@ impl<E: DiskEntry> DiskTree<E> {
     /// Apply `changes` (key -> entry, or `None` to remove). Only the leaves whose key range received a change and their
     /// ancestors are read and rewritten; every replaced page's offset goes to `freed`. An empty change set does
     /// nothing. A change that would empty the whole tree is refused.
-    pub(crate) fn apply(&mut self, file: &mut File, changes: &BTreeMap<u64, Option<E>>, next_page: &mut UnicodePageId, space: &mut FileSpace, freed: &mut Vec<u64>) -> io::Result<()> {
+    pub(crate) fn apply(
+        &mut self,
+        file: &mut File,
+        changes: &BTreeMap<u64, Option<E>>,
+        next_page: &mut UnicodePageId,
+        space: &mut FileSpace,
+        freed: &mut Vec<u64>,
+    ) -> io::Result<()> {
         if changes.is_empty() {
             return Ok(());
         }
@@ -291,18 +375,44 @@ impl<E: DiskEntry> DiskTree<E> {
             TreePage::Leaf(_) => 0,
             TreePage::Inner(level, _) => *level,
         };
-        let Some(mut level_pages) = self.rewrite(file, self.root, changes, (Bound::Unbounded, Bound::Unbounded), 0, next_page, space, freed)? else {
+        let Some(mut level_pages) = self.rewrite(
+            file,
+            self.root,
+            changes,
+            (Bound::Unbounded, Bound::Unbounded),
+            0,
+            next_page,
+            space,
+            freed,
+        )?
+        else {
             return Ok(());
         };
         if level_pages.is_empty() {
-            return Err(io::Error::new(io::ErrorKind::Unsupported, "a writer session cannot empty a B-tree"));
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "a writer session cannot empty a B-tree",
+            ));
         }
         let mut level = root_level;
         while level_pages.len() > 1 {
-            level = level.checked_add(1).filter(|level| *level <= 8).ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, "Unicode PST B-tree exceeds eight levels"))?;
+            level = level
+                .checked_add(1)
+                .filter(|level| *level <= 8)
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "Unicode PST B-tree exceeds eight levels",
+                    )
+                })?;
             let mut upper = Vec::new();
             for chunk in level_pages.chunks(INNER_MAX) {
-                upper.push(self.write_page(file, TreePage::Inner(level, chunk.to_vec()), next_page, space)?);
+                upper.push(self.write_page(
+                    file,
+                    TreePage::Inner(level, chunk.to_vec()),
+                    next_page,
+                    space,
+                )?);
             }
             level_pages = upper;
         }
@@ -343,13 +453,20 @@ impl<E: DiskEntry> DiskTree<E> {
                     }
                 }
                 merged.extend(pending.filter_map(|(_, change)| *change));
-                if merged.len() == old.len() && merged.iter().zip(old).all(|(a, b)| same_btree_entry(a, b)) {
+                if merged.len() == old.len()
+                    && merged.iter().zip(old).all(|(a, b)| same_btree_entry(a, b))
+                {
                     return Ok(None);
                 }
                 freed.push(page_ref.index().index());
                 let mut out = Vec::new();
                 for chunk in merged.chunks(E::LEAF_MAX) {
-                    out.push(self.write_page(file, TreePage::Leaf(chunk.to_vec()), next_page, space)?);
+                    out.push(self.write_page(
+                        file,
+                        TreePage::Leaf(chunk.to_vec()),
+                        next_page,
+                        space,
+                    )?);
                 }
                 Ok(Some(out))
             }
@@ -360,7 +477,11 @@ impl<E: DiskEntry> DiskTree<E> {
                 for index in 0..children.len() {
                     // Child `index` takes the keys of this page's range from its key up to the next child's key; the
                     // first child also the smaller ones, the last child the rest.
-                    let low = if index == 0 { range.0 } else { Bound::Included(children[index].0) };
+                    let low = if index == 0 {
+                        range.0
+                    } else {
+                        Bound::Included(children[index].0)
+                    };
                     let high = match children.get(index + 1) {
                         Some((key, _)) => Bound::Excluded(*key),
                         None => range.1,
@@ -374,7 +495,16 @@ impl<E: DiskEntry> DiskTree<E> {
                         replaced.push(None);
                         continue;
                     }
-                    let result = self.rewrite(file, children[index].1, all, child_range, depth + 1, next_page, space, freed)?;
+                    let result = self.rewrite(
+                        file,
+                        children[index].1,
+                        all,
+                        child_range,
+                        depth + 1,
+                        next_page,
+                        space,
+                        freed,
+                    )?;
                     any |= result.is_some();
                     replaced.push(result);
                 }
@@ -391,7 +521,12 @@ impl<E: DiskEntry> DiskTree<E> {
                 freed.push(page_ref.index().index());
                 let mut out = Vec::new();
                 for chunk in entries.chunks(INNER_MAX) {
-                    out.push(self.write_page(file, TreePage::Inner(*level, chunk.to_vec()), next_page, space)?);
+                    out.push(self.write_page(
+                        file,
+                        TreePage::Inner(*level, chunk.to_vec()),
+                        next_page,
+                        space,
+                    )?);
                 }
                 Ok(Some(out))
             }
@@ -404,30 +539,61 @@ impl<E: DiskEntry> DiskTree<E> {
     fn assert_well_formed(&self) {
         fn same<E: DiskEntry>(a: &TreePage<E>, b: &TreePage<E>) -> bool {
             match (a, b) {
-                (TreePage::Leaf(x), TreePage::Leaf(y)) => x.len() == y.len() && x.iter().zip(y).all(|(a, b)| same_btree_entry(a, b)),
-                (TreePage::Inner(l, x), TreePage::Inner(m, y)) => l == m && x.len() == y.len() && x.iter().zip(y).all(|(a, b)| a.0 == b.0 && same_page_ref(&a.1, &b.1)),
+                (TreePage::Leaf(x), TreePage::Leaf(y)) => {
+                    x.len() == y.len() && x.iter().zip(y).all(|(a, b)| same_btree_entry(a, b))
+                }
+                (TreePage::Inner(l, x), TreePage::Inner(m, y)) => {
+                    l == m
+                        && x.len() == y.len()
+                        && x.iter()
+                            .zip(y)
+                            .all(|(a, b)| a.0 == b.0 && same_page_ref(&a.1, &b.1))
+                }
                 _ => false,
             }
         }
-        fn walk<E: DiskEntry>(tree: &DiskTree<E>, page_ref: UnicodePageRef, depth: usize, leaf_depth: &mut Option<usize>, keys: &mut Vec<u64>) -> u64 {
+        fn walk<E: DiskEntry>(
+            tree: &DiskTree<E>,
+            page_ref: UnicodePageRef,
+            depth: usize,
+            leaf_depth: &mut Option<usize>,
+            keys: &mut Vec<u64>,
+        ) -> u64 {
             let page = E::read_page(&mut tree.reader.borrow_mut(), page_ref).unwrap();
             if let Some(cached) = tree.cache.borrow().0.get(&page_ref.block().into_u64()) {
-                assert!(same(cached, &page), "cached page {:#x} equals the disk", page_ref.index().index());
+                assert!(
+                    same(cached, &page),
+                    "cached page {:#x} equals the disk",
+                    page_ref.index().index()
+                );
             }
             match &page {
                 TreePage::Leaf(items) => {
                     assert!(!items.is_empty() && items.len() <= E::LEAF_MAX, "leaf size");
-                    assert_eq!(*leaf_depth.get_or_insert(depth), depth, "every leaf at the same depth");
+                    assert_eq!(
+                        *leaf_depth.get_or_insert(depth),
+                        depth,
+                        "every leaf at the same depth"
+                    );
                     keys.extend(items.iter().map(BTreeEntry::key));
                     items[0].key()
                 }
                 TreePage::Inner(level, children) => {
-                    assert!(!children.is_empty() && children.len() <= INNER_MAX, "intermediate size");
+                    assert!(
+                        !children.is_empty() && children.len() <= INNER_MAX,
+                        "intermediate size"
+                    );
                     for (key, child) in children {
-                        if let TreePage::Inner(child_level, _) = E::read_page(&mut tree.reader.borrow_mut(), *child).unwrap() {
+                        if let TreePage::Inner(child_level, _) =
+                            E::read_page(&mut tree.reader.borrow_mut(), *child).unwrap()
+                        {
                             assert_eq!(child_level + 1, *level, "levels descend by one");
                         }
-                        assert_eq!(walk(tree, *child, depth + 1, leaf_depth, keys), *key, "intermediate key = child's first key");
+                        assert_eq!(
+                            walk(tree, *child, depth + 1, leaf_depth, keys),
+                            *key,
+                            "intermediate key = child's first key"
+                        );
                     }
                     children[0].0
                 }
@@ -435,11 +601,16 @@ impl<E: DiskEntry> DiskTree<E> {
         }
         let mut keys = Vec::new();
         walk(self, self.root, 0, &mut None, &mut keys);
-        assert!(keys.windows(2).all(|pair| pair[0] < pair[1]), "keys ascending and unique");
-        assert!(self.cache.borrow().0.len() <= TREE_CACHE_CAP, "page cache bounded");
+        assert!(
+            keys.windows(2).all(|pair| pair[0] < pair[1]),
+            "keys ascending and unique"
+        );
+        assert!(
+            self.cache.borrow().0.len() <= TREE_CACHE_CAP,
+            "page cache bounded"
+        );
     }
 }
-
 
 /// The block B-tree's right edge during one commit. New blocks get IDs above every committed key, so their entries
 /// arrive in key order at the tree's right end. They go into the edge's open pages (one per level, copied from the
@@ -465,7 +636,12 @@ impl RightEdge {
             let page = tree.page(page_ref)?;
             let next = match &*page {
                 TreePage::Leaf(_) => None,
-                TreePage::Inner(_, children) => Some(children.last().ok_or(PstError::InvalidBTreePage(page_ref.index().index()))?.1),
+                TreePage::Inner(_, children) => Some(
+                    children
+                        .last()
+                        .ok_or(PstError::InvalidBTreePage(page_ref.index().index()))?
+                        .1,
+                ),
             };
             path.push((page_ref, page));
             match next {
@@ -486,37 +662,85 @@ impl RightEdge {
                 TreePage::Leaf(_) => Vec::new(),
             })
             .collect();
-        Ok(Self { leaf, levels, replaced: path.iter().map(|(page_ref, _)| page_ref.index().index()).collect() })
+        Ok(Self {
+            leaf,
+            levels,
+            replaced: path
+                .iter()
+                .map(|(page_ref, _)| page_ref.index().index())
+                .collect(),
+        })
     }
 
-    fn push(&mut self, tree: &DiskTree<UnicodeBlockBTreeEntry>, file: &mut File, entry: UnicodeBlockBTreeEntry, next_page: &mut UnicodePageId, space: &mut FileSpace) -> io::Result<()> {
+    fn push(
+        &mut self,
+        tree: &DiskTree<UnicodeBlockBTreeEntry>,
+        file: &mut File,
+        entry: UnicodeBlockBTreeEntry,
+        next_page: &mut UnicodePageId,
+        space: &mut FileSpace,
+    ) -> io::Result<()> {
         self.leaf.push(entry);
         if self.leaf.len() >= 2 * UnicodeBlockBTreeEntry::LEAF_MAX {
             // Written from the open leaf; the entries then leave it in place (no vector per page).
-            let written = tree.write_content(file, PageContent::Leaf(&self.leaf[..UnicodeBlockBTreeEntry::LEAF_MAX]), next_page, space)?;
+            let written = tree.write_content(
+                file,
+                PageContent::Leaf(&self.leaf[..UnicodeBlockBTreeEntry::LEAF_MAX]),
+                next_page,
+                space,
+            )?;
             self.leaf.drain(..UnicodeBlockBTreeEntry::LEAF_MAX);
             self.add(tree, file, 0, written, next_page, space)?;
         }
         Ok(())
     }
 
-    fn add(&mut self, tree: &DiskTree<UnicodeBlockBTreeEntry>, file: &mut File, index: usize, child: (u64, UnicodePageRef), next_page: &mut UnicodePageId, space: &mut FileSpace) -> io::Result<()> {
+    fn add(
+        &mut self,
+        tree: &DiskTree<UnicodeBlockBTreeEntry>,
+        file: &mut File,
+        index: usize,
+        child: (u64, UnicodePageRef),
+        next_page: &mut UnicodePageId,
+        space: &mut FileSpace,
+    ) -> io::Result<()> {
         if self.levels.len() == index {
             self.levels.push(Vec::new());
         }
         self.levels[index].push(child);
         if self.levels[index].len() >= 2 * INNER_MAX {
-            let level = u8::try_from(index + 1).ok().filter(|level| *level <= 8).ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, "Unicode PST B-tree exceeds eight levels"))?;
-            let written = tree.write_content(file, PageContent::Inner(level, &self.levels[index][..INNER_MAX]), next_page, space)?;
+            let level = u8::try_from(index + 1)
+                .ok()
+                .filter(|level| *level <= 8)
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "Unicode PST B-tree exceeds eight levels",
+                    )
+                })?;
+            let written = tree.write_content(
+                file,
+                PageContent::Inner(level, &self.levels[index][..INNER_MAX]),
+                next_page,
+                space,
+            )?;
             self.levels[index].drain(..INNER_MAX);
             self.add(tree, file, index + 1, written, next_page, space)?;
         }
         Ok(())
     }
 
-    fn get(&self, tree: &DiskTree<UnicodeBlockBTreeEntry>, key: u64) -> io::Result<Option<UnicodeBlockBTreeEntry>> {
+    fn get(
+        &self,
+        tree: &DiskTree<UnicodeBlockBTreeEntry>,
+        key: u64,
+    ) -> io::Result<Option<UnicodeBlockBTreeEntry>> {
         if self.leaf.first().is_some_and(|first| key >= first.key()) {
-            return Ok(self.leaf.binary_search_by_key(&key, BTreeEntry::key).ok().map(|index| self.leaf[index]));
+            return Ok(self
+                .leaf
+                .binary_search_by_key(&key, BTreeEntry::key)
+                .ok()
+                .map(|index| self.leaf[index]));
         }
         for open in &self.levels {
             if open.first().is_some_and(|(first, _)| key >= *first) {
@@ -531,7 +755,11 @@ impl RightEdge {
     }
 
     /// Every entry the edge holds (its written pages and its open leaf), in key order.
-    fn for_each(&self, tree: &DiskTree<UnicodeBlockBTreeEntry>, mut visit: impl FnMut(&UnicodeBlockBTreeEntry)) -> io::Result<()> {
+    fn for_each(
+        &self,
+        tree: &DiskTree<UnicodeBlockBTreeEntry>,
+        mut visit: impl FnMut(&UnicodeBlockBTreeEntry),
+    ) -> io::Result<()> {
         for open in self.levels.iter().rev() {
             for (_, child) in open {
                 tree.for_each_from(*child, &mut visit)?;
@@ -542,7 +770,13 @@ impl RightEdge {
     }
 
     /// Write the open pages bottom-up; returns the new root.
-    fn finish(self, tree: &DiskTree<UnicodeBlockBTreeEntry>, file: &mut File, next_page: &mut UnicodePageId, space: &mut FileSpace) -> io::Result<UnicodePageRef> {
+    fn finish(
+        self,
+        tree: &DiskTree<UnicodeBlockBTreeEntry>,
+        file: &mut File,
+        next_page: &mut UnicodePageId,
+        space: &mut FileSpace,
+    ) -> io::Result<UnicodePageRef> {
         let mut lower = Vec::new();
         for chunk in self.leaf.chunks(UnicodeBlockBTreeEntry::LEAF_MAX) {
             lower.push(tree.write_page(file, TreePage::Leaf(chunk.to_vec()), next_page, space)?);
@@ -553,18 +787,39 @@ impl RightEdge {
             open.extend(lower);
             lower = Vec::new();
             for chunk in open.chunks(INNER_MAX) {
-                lower.push(tree.write_page(file, TreePage::Inner(level, chunk.to_vec()), next_page, space)?);
+                lower.push(tree.write_page(
+                    file,
+                    TreePage::Inner(level, chunk.to_vec()),
+                    next_page,
+                    space,
+                )?);
             }
         }
         while lower.len() > 1 {
-            level = level.checked_add(1).filter(|level| *level <= 8).ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, "Unicode PST B-tree exceeds eight levels"))?;
+            level = level
+                .checked_add(1)
+                .filter(|level| *level <= 8)
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "Unicode PST B-tree exceeds eight levels",
+                    )
+                })?;
             let mut upper = Vec::new();
             for chunk in lower.chunks(INNER_MAX) {
-                upper.push(tree.write_page(file, TreePage::Inner(level, chunk.to_vec()), next_page, space)?);
+                upper.push(tree.write_page(
+                    file,
+                    TreePage::Inner(level, chunk.to_vec()),
+                    next_page,
+                    space,
+                )?);
             }
             lower = upper;
         }
-        lower.pop().map(|(_, root)| root).ok_or_else(|| io::Error::other("the right edge holds no page"))
+        lower
+            .pop()
+            .map(|(_, root)| root)
+            .ok_or_else(|| io::Error::other("the right edge holds no page"))
     }
 }
 
@@ -629,8 +884,13 @@ impl Changes {
     pub(crate) fn put_block(&mut self, entry: UnicodeBlockBTreeEntry) {
         let key = entry.key();
         let above = |bound: Option<u64>| bound.is_none_or(|bound| key > bound);
-        let last = self.appends.last().map(BTreeEntry::key).or_else(|| self.edge.as_ref().and_then(RightEdge::last_key));
-        if self.floor.is_some() && above(self.floor) && above(last) && !self.bbt.contains_key(&key) {
+        let last = self
+            .appends
+            .last()
+            .map(BTreeEntry::key)
+            .or_else(|| self.edge.as_ref().and_then(RightEdge::last_key));
+        if self.floor.is_some() && above(self.floor) && above(last) && !self.bbt.contains_key(&key)
+        {
             #[cfg(test)]
             crate::measurement::heap::uncounted(|| self.appended_log.push(entry));
             if entry.block().block().is_internal() && !self.precounted.contains(&key) {
@@ -643,7 +903,11 @@ impl Changes {
     }
 
     /// A block entry as this commit sees it: its change, its append, the right edge, or the committed tree.
-    pub(crate) fn block(&self, state: &CommittedState, key: u64) -> io::Result<Option<UnicodeBlockBTreeEntry>> {
+    pub(crate) fn block(
+        &self,
+        state: &CommittedState,
+        key: u64,
+    ) -> io::Result<Option<UnicodeBlockBTreeEntry>> {
         if let Some(entry) = self.bbt.get(&key) {
             return Ok(*entry);
         }
@@ -660,7 +924,10 @@ impl Changes {
     }
 
     /// Every block entry as this commit sees it, in key order (O(blocks): the reference-count fallback and tests).
-    pub(crate) fn all_block_entries(&self, state: &CommittedState) -> io::Result<Vec<UnicodeBlockBTreeEntry>> {
+    pub(crate) fn all_block_entries(
+        &self,
+        state: &CommittedState,
+    ) -> io::Result<Vec<UnicodeBlockBTreeEntry>> {
         let mut merged: BTreeMap<u64, UnicodeBlockBTreeEntry> = BTreeMap::new();
         state.bbt.for_each(|entry| {
             merged.insert(entry.key(), *entry);
@@ -680,7 +947,12 @@ impl Changes {
         Ok(merged.into_values().collect())
     }
 
-    fn drain_appends(&mut self, state: &CommittedState, file: &mut File, space: &mut FileSpace) -> io::Result<()> {
+    fn drain_appends(
+        &mut self,
+        state: &CommittedState,
+        file: &mut File,
+        space: &mut FileSpace,
+    ) -> io::Result<()> {
         if self.appends.is_empty() {
             return Ok(());
         }
@@ -722,7 +994,11 @@ impl<'a> Tx<'a> {
     }
 
     /// Move the buffered appends into the right edge once the buffer is full, writing every page that fills.
-    pub(crate) fn drain_appends(&mut self, file: &mut File, space: &mut FileSpace) -> io::Result<()> {
+    pub(crate) fn drain_appends(
+        &mut self,
+        file: &mut File,
+        space: &mut FileSpace,
+    ) -> io::Result<()> {
         if self.changes.appends.len() < APPEND_BUFFER {
             return Ok(());
         }
@@ -756,7 +1032,10 @@ impl<'a> Tx<'a> {
 
     /// Every committed node of one type, in key order. O(nodes): used only by the folderless append's receive-folder
     /// lookup, which an append to a folder path never takes.
-    pub(crate) fn nodes_of_type(&self, id_type: NodeIdType) -> io::Result<Vec<UnicodeNodeBTreeEntry>> {
+    pub(crate) fn nodes_of_type(
+        &self,
+        id_type: NodeIdType,
+    ) -> io::Result<Vec<UnicodeNodeBTreeEntry>> {
         let mut nodes = Vec::new();
         self.state.nbt.for_each(|entry| {
             if matches!(entry.node().id_type(), Ok(t) if t == id_type) {
@@ -769,7 +1048,6 @@ impl<'a> Tx<'a> {
     pub(crate) fn file_space(&self) -> FileSpace {
         self.state.amap.file_space()
     }
-
 }
 
 impl BlockLookup for Tx<'_> {
@@ -802,7 +1080,12 @@ const AMAP_CHECK_WINDOW: usize = 2048;
 
 /// Every allocation the B-trees account for, as `rebuild_allocation_map` marks them: each page of both B-trees, and
 /// each block of the block B-tree, read from disk page by page (nothing is retained).
-fn btree_allocations(file: &mut File, nbt: UnicodePageRef, bbt: UnicodePageRef, mark: &mut dyn FnMut(u64, u64)) -> io::Result<()> {
+fn btree_allocations(
+    file: &mut File,
+    nbt: UnicodePageRef,
+    bbt: UnicodePageRef,
+    mark: &mut dyn FnMut(u64, u64),
+) -> io::Result<()> {
     let mut stack = vec![(nbt, false, 0_u8), (bbt, true, 0_u8)];
     while let Some((page_ref, blocks, depth)) = stack.pop() {
         if depth > 8 {
@@ -814,16 +1097,23 @@ fn btree_allocations(file: &mut File, nbt: UnicodePageRef, bbt: UnicodePageRef, 
             match UnicodeBlockBTree::read(file, page_ref)? {
                 RootBTreePage::Leaf(page) => {
                     for entry in page.entries() {
-                        mark(entry.block().index().index(), block_marked_size(entry.size()));
+                        mark(
+                            entry.block().index().index(),
+                            block_marked_size(entry.size()),
+                        );
                     }
                     Vec::new()
                 }
-                RootBTreePage::Intermediate(page, ..) => page.entries().iter().map(|entry| entry.block()).collect(),
+                RootBTreePage::Intermediate(page, ..) => {
+                    page.entries().iter().map(|entry| entry.block()).collect()
+                }
             }
         } else {
             match UnicodeNodeBTree::read(file, page_ref)? {
                 RootBTreePage::Leaf(_) => Vec::new(),
-                RootBTreePage::Intermediate(page, ..) => page.entries().iter().map(|entry| entry.block()).collect(),
+                RootBTreePage::Intermediate(page, ..) => {
+                    page.entries().iter().map(|entry| entry.block()).collect()
+                }
             }
         };
         stack.extend(children.into_iter().map(|child| (child, blocks, depth + 1)));
@@ -836,7 +1126,8 @@ fn amap_page_base(index: usize) -> u64 {
 }
 
 fn amap_page_count(eof: u64) -> u64 {
-    eof.saturating_sub(AMAP_FIRST_OFFSET).div_ceil(AMAP_DATA_SIZE)
+    eof.saturating_sub(AMAP_FIRST_OFFSET)
+        .div_ceil(AMAP_DATA_SIZE)
 }
 
 fn amap_index_of(offset: u64) -> usize {
@@ -862,7 +1153,10 @@ fn mark_range(bits: &mut MapBits, index: usize, start: u64, end: u64, allocated:
     if start >= end {
         return;
     }
-    let (first, count) = (((start - base) / 64) as usize, (end - start).div_ceil(64) as usize);
+    let (first, count) = (
+        ((start - base) / 64) as usize,
+        (end - start).div_ceil(64) as usize,
+    );
     if allocated {
         set_bits(bits, first, count);
     } else {
@@ -878,7 +1172,10 @@ fn reserved_bits(index: usize) -> MapBits {
 }
 
 fn free_bytes_of(bits: &MapBits) -> u64 {
-    bits.iter().map(|byte| u64::from(byte.count_zeros())).sum::<u64>() * 64
+    bits.iter()
+        .map(|byte| u64::from(byte.count_zeros()))
+        .sum::<u64>()
+        * 64
 }
 
 fn block_marked_size(size: u16) -> u64 {
@@ -890,7 +1187,11 @@ fn map_page_trailer(page_type: PageType, offset: u64) -> UnicodePageTrailer {
 }
 
 /// A map page's 512 bytes, encoded into an array, not a new vector per page.
-fn encode_map_page<const P: u8>(bits: MapBits, page_type: PageType, offset: u64) -> io::Result<[u8; PAGE_SIZE]> {
+fn encode_map_page<const P: u8>(
+    bits: MapBits,
+    page_type: PageType,
+    offset: u64,
+) -> io::Result<[u8; PAGE_SIZE]> {
     let page = <UnicodeMapPage<P> as MapPageReadWrite<UnicodePstFile, P>>::new(
         bits,
         map_page_trailer(page_type, offset),
@@ -916,7 +1217,10 @@ fn read_amap_bits(file: &mut File, index: usize) -> io::Result<MapBits> {
     file.seek(SeekFrom::Start(amap_page_base(index)))?;
     file.read_exact(&mut page)?;
     if page[size_of::<MapBits>()] != PageType::AllocationMap as u8 {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, format!("AMap page {index} has the wrong page type")));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("AMap page {index} has the wrong page type"),
+        ));
     }
     let mut bits = [0; size_of::<MapBits>()];
     bits.copy_from_slice(&page[..size_of::<MapBits>()]);
@@ -951,15 +1255,38 @@ fn constant_map_pages(index: usize) -> io::Result<impl Iterator<Item = (u64, [u8
     let mut pages = [None, None, None];
     if index % PMAP_PAGE_COUNT == 0 {
         let offset = (index / PMAP_PAGE_COUNT) * PMAP_DATA_SIZE + PMAP_FIRST_OFFSET;
-        pages[0] = Some((offset, encode_map_page::<{ PageType::AllocationPageMap as u8 }>([0xFF; size_of::<MapBits>()], PageType::AllocationPageMap, offset)?));
+        pages[0] = Some((
+            offset,
+            encode_map_page::<{ PageType::AllocationPageMap as u8 }>(
+                [0xFF; size_of::<MapBits>()],
+                PageType::AllocationPageMap,
+                offset,
+            )?,
+        ));
     }
     if index >= FMAP_FIRST_SIZE && (index - FMAP_FIRST_SIZE) % FMAP_PAGE_COUNT == 0 {
-        let offset = ((index - FMAP_FIRST_SIZE) / FMAP_PAGE_COUNT) * FMAP_DATA_SIZE + FMAP_FIRST_OFFSET;
-        pages[1] = Some((offset, encode_map_page::<{ PageType::FreeMap as u8 }>([0xFF; size_of::<MapBits>()], PageType::FreeMap, offset)?));
+        let offset =
+            ((index - FMAP_FIRST_SIZE) / FMAP_PAGE_COUNT) * FMAP_DATA_SIZE + FMAP_FIRST_OFFSET;
+        pages[1] = Some((
+            offset,
+            encode_map_page::<{ PageType::FreeMap as u8 }>(
+                [0xFF; size_of::<MapBits>()],
+                PageType::FreeMap,
+                offset,
+            )?,
+        ));
     }
     if index >= FPMAP_FIRST_SIZE && (index - FPMAP_FIRST_SIZE) % FPMAP_PAGE_COUNT == 0 {
-        let offset = ((index - FPMAP_FIRST_SIZE) / FPMAP_PAGE_COUNT) * FPMAP_DATA_SIZE + FPMAP_FIRST_OFFSET;
-        pages[2] = Some((offset, encode_map_page::<{ PageType::FreePageMap as u8 }>([0xFF; size_of::<MapBits>()], PageType::FreePageMap, offset)?));
+        let offset =
+            ((index - FPMAP_FIRST_SIZE) / FPMAP_PAGE_COUNT) * FPMAP_DATA_SIZE + FPMAP_FIRST_OFFSET;
+        pages[2] = Some((
+            offset,
+            encode_map_page::<{ PageType::FreePageMap as u8 }>(
+                [0xFF; size_of::<MapBits>()],
+                PageType::FreePageMap,
+                offset,
+            )?,
+        ));
     }
     Ok(pages.into_iter().flatten())
 }
@@ -1043,7 +1370,9 @@ impl AllocRecord {
     /// commit after a 1.5 GiB one recorded about 10,000 here). The map update marks the same bytes either way.
     pub(crate) fn below(&mut self, offset: u64, size: u64) {
         if let Some((start, length)) = self.below.last_mut() {
-            if *start + *length == offset && amap_index_of(*start) == amap_index_of(offset + size - 1) {
+            if *start + *length == offset
+                && amap_index_of(*start) == amap_index_of(offset + size - 1)
+            {
                 *length += size;
                 return;
             }
@@ -1063,7 +1392,8 @@ impl AllocRecord {
         while at < offset {
             let range = amap_index_of(at);
             let range_end = amap_page_base(range + 1);
-            let data_start = amap_page_base(range) + map_page_count(range as u64) * PAGE_SIZE as u64;
+            let data_start =
+                amap_page_base(range) + map_page_count(range as u64) * PAGE_SIZE as u64;
             let (gap_start, gap_end) = (at.max(data_start), offset.min(range_end));
             if gap_start < gap_end {
                 self.fill(range).gaps.push((gap_start, gap_end));
@@ -1080,7 +1410,11 @@ impl AllocRecord {
 
     /// The fill of range `index`, finishing the range before it when the bump allocator moved on.
     fn fill(&mut self, index: usize) -> &mut RangeFill {
-        if self.current.as_ref().is_some_and(|fill| fill.index != index) {
+        if self
+            .current
+            .as_ref()
+            .is_some_and(|fill| fill.index != index)
+        {
             let done = self.current.take().expect("checked");
             if done.index < self.committed_pages {
                 self.boundary = Some(done);
@@ -1094,9 +1428,15 @@ impl AllocRecord {
             }
         }
         if self.current.is_none() {
-            let data_start = amap_page_base(index) + map_page_count(index as u64) * PAGE_SIZE as u64;
+            let data_start =
+                amap_page_base(index) + map_page_count(index as u64) * PAGE_SIZE as u64;
             let first = data_start.max(self.committed_eof);
-            self.current = Some(RangeFill { index, first, end: first, gaps: std::mem::take(&mut self.spare_gaps) });
+            self.current = Some(RangeFill {
+                index,
+                first,
+                end: first,
+                gaps: std::mem::take(&mut self.spare_gaps),
+            });
         }
         self.current.as_mut().expect("set above")
     }
@@ -1108,7 +1448,15 @@ impl AllocRecord {
         for (index, bits) in complete.drain(..) {
             count_op!(AMAP_PAGES_ENCODED, 1);
             let offset = amap_page_base(index);
-            write_at(file, offset, &encode_map_page::<{ PageType::AllocationMap as u8 }>(bits, PageType::AllocationMap, offset)?)?;
+            write_at(
+                file,
+                offset,
+                &encode_map_page::<{ PageType::AllocationMap as u8 }>(
+                    bits,
+                    PageType::AllocationMap,
+                    offset,
+                )?,
+            )?;
             for (offset, page) in constant_map_pages(index)? {
                 write_at(file, offset, &page)?;
             }
@@ -1142,7 +1490,11 @@ impl AllocationState {
     /// differs (the Outlook template carries space no B-tree references; so may files from other writers), is rebuilt
     /// from the B-trees first. With `path` `None` (read only) nothing is repaired. Returns the state and, after a
     /// rebuild, the new header.
-    fn open(file: &mut File, path: Option<&Path>, header: &UnicodeHeader) -> io::Result<(Self, Option<UnicodeHeader>)> {
+    fn open(
+        file: &mut File,
+        path: Option<&Path>,
+        header: &UnicodeHeader,
+    ) -> io::Result<(Self, Option<UnicodeHeader>)> {
         let mut current = header.clone();
         let mut rebuilt = None;
         for attempt in 0..2 {
@@ -1152,7 +1504,10 @@ impl AllocationState {
                     return Ok((state, rebuilt));
                 }
                 if attempt == 1 {
-                    return Err(io::Error::new(io::ErrorKind::InvalidData, "the allocation map still differs from the B-trees after a rebuild"));
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "the allocation map still differs from the B-trees after a rebuild",
+                    ));
                 }
             }
             let Some(path) = path else {
@@ -1194,12 +1549,23 @@ impl AllocationState {
         while window < count {
             let end = (window + AMAP_CHECK_WINDOW).min(count);
             let mut expected: Vec<MapBits> = (window..end).map(reserved_bits).collect();
-            btree_allocations(file, *root.node_btree(), *root.block_btree(), &mut |offset, size| {
-                let (first, last) = (amap_index_of(offset), amap_index_of(offset + size - 1));
-                for index in first.max(window)..=last.min(end - 1) {
-                    mark_range(&mut expected[index - window], index, offset, offset + size, true);
-                }
-            })?;
+            btree_allocations(
+                file,
+                *root.node_btree(),
+                *root.block_btree(),
+                &mut |offset, size| {
+                    let (first, last) = (amap_index_of(offset), amap_index_of(offset + size - 1));
+                    for index in first.max(window)..=last.min(end - 1) {
+                        mark_range(
+                            &mut expected[index - window],
+                            index,
+                            offset,
+                            offset + size,
+                            true,
+                        );
+                    }
+                },
+            )?;
             for index in window..end {
                 let bits = read_amap_bits(file, index)?;
                 consistent &= bits == expected[index - window];
@@ -1224,7 +1590,11 @@ impl AllocationState {
         // An FMap page that is not all 0xFF (written by an earlier version of this writer, or by Outlook 2003) holds
         // values this writer never updates, so they would fall below the real free runs. Such a file is treated like a
         // differing map: `rebuild_allocation_map` writes its FMap pages as 0xFF.
-        for k in 0..(count as u64).max(FMAP_FIRST_SIZE).saturating_sub(FMAP_FIRST_SIZE).div_ceil(FMAP_PAGE_COUNT) {
+        for k in 0..(count as u64)
+            .max(FMAP_FIRST_SIZE)
+            .saturating_sub(FMAP_FIRST_SIZE)
+            .div_ceil(FMAP_PAGE_COUNT)
+        {
             let mut bytes = [0; size_of::<MapBits>()];
             file.seek(SeekFrom::Start(k * FMAP_DATA_SIZE + FMAP_FIRST_OFFSET))?;
             file.read_exact(&mut bytes)?;
@@ -1236,7 +1606,12 @@ impl AllocationState {
     fn file_space(&self) -> FileSpace {
         let mut space = FileSpace::from(self.eof);
         space.free = self.free_runs.clone();
-        space.max_run = space.free.iter().map(|(start, end)| end - start).max().unwrap_or(0);
+        space.max_run = space
+            .free
+            .iter()
+            .map(|(start, end)| end - start)
+            .max()
+            .unwrap_or(0);
         space.record = Some(match self.spare_record.borrow_mut().take() {
             Some(mut record) => {
                 record.reset(self.eof);
@@ -1270,9 +1645,21 @@ impl AllocationState {
     /// After the commit point: apply the commit's allocations below and at the committed EOF, finish the range being
     /// filled, release `freed` (offset, bytes), and write every changed map page. Returns the new free byte total and
     /// AMap page count. The pages are written, not synced; the caller syncs before marking the map valid.
-    fn commit(&mut self, file: &mut File, space: FileSpace, freed: &[(u64, u64)], new_eof: u64) -> io::Result<(u64, u64)> {
-        let FileSpace { free: remaining, record, eof: used_end, .. } = space;
-        let mut record = record.ok_or_else(|| io::Error::other("a session commit needs its allocation record"))?;
+    fn commit(
+        &mut self,
+        file: &mut File,
+        space: FileSpace,
+        freed: &[(u64, u64)],
+        new_eof: u64,
+    ) -> io::Result<(u64, u64)> {
+        let FileSpace {
+            free: remaining,
+            record,
+            eof: used_end,
+            ..
+        } = space;
+        let mut record = record
+            .ok_or_else(|| io::Error::other("a session commit needs its allocation record"))?;
         record.write_complete(file)?;
         let committed_pages = record.committed_pages;
         let written_through = record.written_through;
@@ -1282,7 +1669,10 @@ impl AllocationState {
         // fills the previous commit's gaps). The changes to one page are disjoint ranges (allocations from free space,
         // space freed by this commit, the bump allocator's fills), so the order they are applied in does not change the
         // result.
-        let mut fills: Vec<RangeFill> = [record.boundary.take(), record.current.take()].into_iter().flatten().collect();
+        let mut fills: Vec<RangeFill> = [record.boundary.take(), record.current.take()]
+            .into_iter()
+            .flatten()
+            .collect();
         fills.sort_unstable_by_key(|fill| fill.index);
         record.below.sort_unstable();
         let mut freed: Vec<(u64, u64)> = freed.to_vec();
@@ -1292,14 +1682,20 @@ impl AllocationState {
         loop {
             let index = [
                 fills.get(next_fill).map(|fill| fill.index),
-                record.below.get(next_below).map(|(offset, _)| amap_index_of(*offset)),
-                freed.get(next_freed).map(|(offset, _)| amap_index_of(*offset)),
+                record
+                    .below
+                    .get(next_below)
+                    .map(|(offset, _)| amap_index_of(*offset)),
+                freed
+                    .get(next_freed)
+                    .map(|(offset, _)| amap_index_of(*offset)),
             ]
             .into_iter()
             .flatten()
             .min();
             let Some(index) = index else { break };
-            let on_disk = index < committed_pages || written_through.is_some_and(|last| index <= last);
+            let on_disk =
+                index < committed_pages || written_through.is_some_and(|last| index <= last);
             let (mut bits, counted) = if on_disk {
                 let bits = self.cached_bits(file, index)?;
                 (bits, free_bytes_of(&bits))
@@ -1315,18 +1711,35 @@ impl AllocationState {
                 }
                 next_fill += 1;
             }
-            while let Some((offset, size)) = record.below.get(next_below).copied().filter(|(offset, _)| amap_index_of(*offset) == index) {
+            while let Some((offset, size)) = record
+                .below
+                .get(next_below)
+                .copied()
+                .filter(|(offset, _)| amap_index_of(*offset) == index)
+            {
                 mark_range(&mut bits, index, offset, offset + size, true);
                 next_below += 1;
             }
-            while let Some((offset, size)) = freed.get(next_freed).copied().filter(|(offset, _)| amap_index_of(*offset) == index) {
+            while let Some((offset, size)) = freed
+                .get(next_freed)
+                .copied()
+                .filter(|(offset, _)| amap_index_of(*offset) == index)
+            {
                 mark_range(&mut bits, index, offset, offset + size, false);
                 next_freed += 1;
             }
             count_op!(AMAP_PAGES_ENCODED, 1);
             free_total = free_total + free_bytes_of(&bits) - counted;
             let offset = amap_page_base(index);
-            write_at(file, offset, &encode_map_page::<{ PageType::AllocationMap as u8 }>(bits, PageType::AllocationMap, offset)?)?;
+            write_at(
+                file,
+                offset,
+                &encode_map_page::<{ PageType::AllocationMap as u8 }>(
+                    bits,
+                    PageType::AllocationMap,
+                    offset,
+                )?,
+            )?;
             self.remember(index, bits);
         }
         // Allocation candidates for the next commit: what this commit left of the old runs, the space it freed and
@@ -1378,7 +1791,10 @@ impl CommittedState {
     fn read(file: &mut File, path: &Path) -> io::Result<Self> {
         let state = Self::read_any(file, Some(path))?;
         // The writer keeps the file's encoding; Outlook writes permute (compressible) encoding by default.
-        if !matches!(state.header.crypt_method(), NdbCryptMethod::None | NdbCryptMethod::Permute) {
+        if !matches!(
+            state.header.crypt_method(),
+            NdbCryptMethod::None | NdbCryptMethod::Permute
+        ) {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
                 "append supports unencrypted and permute-encoded Unicode PSTs, not cyclic encoding",
@@ -1397,11 +1813,21 @@ impl CommittedState {
         }
         let root = header.root().clone();
         // The B-trees stay on disk; the session holds their roots and page caches.
-        let (bbt, nbt): (DiskTree<UnicodeBlockBTreeEntry>, DiskTree<UnicodeNodeBTreeEntry>) = match path {
-            Some(path) => (DiskTree::open(path, *root.block_btree())?, DiskTree::open(path, *root.node_btree())?),
-            None => (DiskTree::over(file.try_clone()?, *root.block_btree()), DiskTree::over(file.try_clone()?, *root.node_btree())),
+        let (bbt, nbt): (
+            DiskTree<UnicodeBlockBTreeEntry>,
+            DiskTree<UnicodeNodeBTreeEntry>,
+        ) = match path {
+            Some(path) => (
+                DiskTree::open(path, *root.block_btree())?,
+                DiskTree::open(path, *root.node_btree())?,
+            ),
+            None => (
+                DiskTree::over(file.try_clone()?, *root.block_btree()),
+                DiskTree::over(file.try_clone()?, *root.node_btree()),
+            ),
         };
-        let density_list = <UnicodeDensityListPage as DensityListPageReadWrite<UnicodePstFile>>::read(file).ok();
+        let density_list =
+            <UnicodeDensityListPage as DensityListPageReadWrite<UnicodePstFile>>::read(file).ok();
         // One pass over the node B-tree (session open only) for the largest index of each node type.
         let mut max_node_index = [None; 32];
         nbt.for_each(|entry| {
@@ -1449,7 +1875,10 @@ pub(crate) struct WriterCore {
     pub(crate) max_file_size: Option<u64>,
     /// Tests only: every entry of both B-trees, kept in memory to check each commit's copy-on-write result.
     #[cfg(test)]
-    shadow: Option<(BTreeMap<u64, UnicodeBlockBTreeEntry>, BTreeMap<u64, UnicodeNodeBTreeEntry>)>,
+    shadow: Option<(
+        BTreeMap<u64, UnicodeBlockBTreeEntry>,
+        BTreeMap<u64, UnicodeNodeBTreeEntry>,
+    )>,
 }
 
 impl WriterCore {
@@ -1458,8 +1887,18 @@ impl WriterCore {
         let state = CommittedState::read(&mut file, path)?;
         #[cfg(test)]
         let shadow = Some((
-            state.bbt.entries()?.into_iter().map(|entry| (entry.key(), entry)).collect(),
-            state.nbt.entries()?.into_iter().map(|entry| (entry.key(), entry)).collect(),
+            state
+                .bbt
+                .entries()?
+                .into_iter()
+                .map(|entry| (entry.key(), entry))
+                .collect(),
+            state
+                .nbt
+                .entries()?
+                .into_iter()
+                .map(|entry| (entry.key(), entry))
+                .collect(),
         ));
         Ok(Self {
             #[cfg(test)]
@@ -1481,7 +1920,12 @@ impl WriterCore {
 
     /// A commit patched `parent`'s hierarchy table (a row's cells): keep its append state's roots current, or drop the
     /// state when the rows are no longer in a subnode.
-    pub(crate) fn hierarchy_changed(&mut self, parent: NodeId, heap: UnicodeBlockId, rows: Option<UnicodeBlockId>) {
+    pub(crate) fn hierarchy_changed(
+        &mut self,
+        parent: NodeId,
+        heap: UnicodeBlockId,
+        rows: Option<UnicodeBlockId>,
+    ) {
         let key = u32::from(parent);
         match (self.hierarchy.get_mut(&key), rows) {
             (Some(state), Some(rows)) => {
@@ -1515,7 +1959,10 @@ impl WriterCore {
 
     /// Run a planned change: `plan` reads what it needs and writes new blocks; then the change is committed. Any
     /// error poisons the session.
-    pub(crate) fn run<T>(&mut self, plan: impl FnOnce(&mut File, &CommittedState, Rc<UnicodeStore>) -> io::Result<(CommitPlan, T)>) -> io::Result<T> {
+    pub(crate) fn run<T>(
+        &mut self,
+        plan: impl FnOnce(&mut File, &CommittedState, Rc<UnicodeStore>) -> io::Result<(CommitPlan, T)>,
+    ) -> io::Result<T> {
         // The committed end of the file, taken before planning (which may already write blocks past it).
         let committed_eof = self.state()?.header.root().file_eof_index().index();
         crate::measurement::commit_started();
@@ -1535,15 +1982,26 @@ impl WriterCore {
             // pages in space the committed state marks free or beyond its end, and no header; cutting the file back to
             // its committed end leaves the last commit's store, complete. The session stays poisoned (its state was
             // changed by the abandoned commit); `UnicodePstWriter::open` reads the file again.
-            if error.get_ref().is_some_and(|inner| inner.is::<crate::UnicodePstFileLimitReached>()) {
-                if let Err(cut) = self.file.set_len(committed_eof).and_then(|()| self.file.sync_data()) {
-                    self.poisoned = Some(format!("{error}; cutting the file back to its last commit failed: {cut}"));
+            if error
+                .get_ref()
+                .is_some_and(|inner| inner.is::<crate::UnicodePstFileLimitReached>())
+            {
+                if let Err(cut) = self
+                    .file
+                    .set_len(committed_eof)
+                    .and_then(|()| self.file.sync_data())
+                {
+                    self.poisoned = Some(format!(
+                        "{error}; cutting the file back to its last commit failed: {cut}"
+                    ));
                     self.state = None;
                     self.contents.clear();
                     self.folders.clear();
                     self.hierarchy.clear();
                     self.children.clear();
-                    return Err(io::Error::other(format!("{error}; cutting the file back to its last commit failed: {cut}")));
+                    return Err(io::Error::other(format!(
+                        "{error}; cutting the file back to its last commit failed: {cut}"
+                    )));
                 }
             }
             self.poisoned = Some(error.to_string());
@@ -1559,12 +2017,28 @@ impl WriterCore {
     fn commit(&mut self, plan: CommitPlan) -> io::Result<()> {
         #[cfg(test)]
         COMMIT_START.with(|calls| {
-            use crate::measurement::heap::{calls_on_this_thread, huge_calls_on_this_thread, large_calls_on_this_thread};
-            calls.set((calls_on_this_thread(), large_calls_on_this_thread(), huge_calls_on_this_thread()))
+            use crate::measurement::heap::{
+                calls_on_this_thread, huge_calls_on_this_thread, large_calls_on_this_thread,
+            };
+            calls.set((
+                calls_on_this_thread(),
+                large_calls_on_this_thread(),
+                huge_calls_on_this_thread(),
+            ))
         });
-        let mut state = self.state.take().ok_or_else(|| io::Error::other("the PST writer session is poisoned"))?;
+        let mut state = self
+            .state
+            .take()
+            .ok_or_else(|| io::Error::other("the PST writer session is poisoned"))?;
         let file = &mut self.file;
-        let CommitPlan { mut header, mut changes, blocks, next_bid, mut next_offset, reserved_nodes } = plan;
+        let CommitPlan {
+            mut header,
+            mut changes,
+            blocks,
+            next_bid,
+            mut next_offset,
+            reserved_nodes,
+        } = plan;
         for block in &blocks {
             if block.precounted {
                 changes.precounted.insert(block.id.search_key());
@@ -1593,7 +2067,12 @@ impl WriterCore {
                 let old = match changes.floor.is_some_and(|floor| *key > floor) {
                     true => match changes.appends.binary_search_by_key(key, BTreeEntry::key) {
                         Ok(index) => Some(changes.appends[index]),
-                        Err(_) => changes.edge.as_ref().map(|edge| edge.get(&state.bbt, *key)).transpose()?.flatten(),
+                        Err(_) => changes
+                            .edge
+                            .as_ref()
+                            .map(|edge| edge.get(&state.bbt, *key))
+                            .transpose()?
+                            .flatten(),
                     },
                     false => state.bbt.get(*key)?,
                 };
@@ -1604,13 +2083,21 @@ impl WriterCore {
         }
         #[cfg(test)]
         let shadow_changes = {
-            let mut bbt: BTreeMap<u64, Option<UnicodeBlockBTreeEntry>> = changes.appended_log.iter().map(|entry| (entry.key(), Some(*entry))).collect();
+            let mut bbt: BTreeMap<u64, Option<UnicodeBlockBTreeEntry>> = changes
+                .appended_log
+                .iter()
+                .map(|entry| (entry.key(), Some(*entry)))
+                .collect();
             bbt.extend(changes.bbt.iter().map(|(key, change)| (*key, *change)));
             (bbt, changes.nbt.clone())
         };
         // Changes to entries still in the append buffer (reference counts of new blocks) are made there, so those
         // entries are written once, with their final counts; then the buffer moves into the right edge.
-        let buffered: Vec<u64> = changes.bbt.range(changes.appends.first().map_or(u64::MAX, BTreeEntry::key)..).map(|(key, _)| *key).collect();
+        let buffered: Vec<u64> = changes
+            .bbt
+            .range(changes.appends.first().map_or(u64::MAX, BTreeEntry::key)..)
+            .map(|(key, _)| *key)
+            .collect();
         for key in buffered {
             if let Ok(index) = changes.appends.binary_search_by_key(&key, BTreeEntry::key) {
                 match changes.bbt.remove(&key).flatten() {
@@ -1623,7 +2110,10 @@ impl WriterCore {
         }
         changes.drain_appends(&state, file, &mut next_offset)?;
         // The largest block key and index after this commit (appends are the largest).
-        let appended_last = changes.edge.as_ref().and_then(|edge| edge.leaf.last().copied());
+        let appended_last = changes
+            .edge
+            .as_ref()
+            .and_then(|edge| edge.leaf.last().copied());
 
         // Each tree rewrites only the paths of the keys this commit changes (copy on write); a tree with no change is
         // left as it is. The new pages are written here, before the commit point.
@@ -1634,23 +2124,47 @@ impl WriterCore {
             freed_pages.extend(edge.replaced.iter().copied());
             state.bbt.root = edge.finish(&state.bbt, file, &mut next_page, &mut next_offset)?;
         }
-        state.bbt.apply(file, &changes.bbt, &mut next_page, &mut next_offset, &mut freed_pages)?;
-        state.nbt.apply(file, &changes.nbt, &mut next_page, &mut next_offset, &mut freed_pages)?;
+        state.bbt.apply(
+            file,
+            &changes.bbt,
+            &mut next_page,
+            &mut next_offset,
+            &mut freed_pages,
+        )?;
+        state.nbt.apply(
+            file,
+            &changes.nbt,
+            &mut next_page,
+            &mut next_offset,
+            &mut freed_pages,
+        )?;
         let (bbt_ref, nbt_ref) = (state.bbt.root, state.nbt.root);
         // MS-PST 2.6.1.1.2, "The PST file MUST grow at integer multiples of the number of bytes mapped by an AMap". The
         // file ends where its last AMap range ends, as Outlook's files do. cbAMapFree counts that range's free tail; a
         // file that stopped short would claim free space past its end, and Outlook, growing it, would count that space
         // a second time (SCANPST finds this after classic Outlook adds a message to such a file). The tail is a free
         // run for the next commit (`AllocationState::commit`).
-        let new_eof = AMAP_FIRST_OFFSET + next_offset.eof.saturating_sub(AMAP_FIRST_OFFSET).div_ceil(AMAP_DATA_SIZE) * AMAP_DATA_SIZE;
+        let new_eof = AMAP_FIRST_OFFSET
+            + next_offset
+                .eof
+                .saturating_sub(AMAP_FIRST_OFFSET)
+                .div_ceil(AMAP_DATA_SIZE)
+                * AMAP_DATA_SIZE;
         // No header is written for a file that ends past the session's limit. The commit is abandoned here, before its
         // map pages, its length and its header; `run` cuts the file back to the committed end.
         if let Some(limit) = self.max_file_size {
             if new_eof > limit {
-                return Err(io::Error::new(io::ErrorKind::FileTooLarge, crate::UnicodePstFileLimitReached { size: new_eof, limit }));
+                return Err(io::Error::new(
+                    io::ErrorKind::FileTooLarge,
+                    crate::UnicodePstFileLimitReached {
+                        size: new_eof,
+                        limit,
+                    },
+                ));
             }
         }
-        let amap_last = AMAP_FIRST_OFFSET + ((new_eof - AMAP_FIRST_OFFSET - 1) / AMAP_DATA_SIZE) * AMAP_DATA_SIZE;
+        let amap_last = AMAP_FIRST_OFFSET
+            + ((new_eof - AMAP_FIRST_OFFSET - 1) / AMAP_DATA_SIZE) * AMAP_DATA_SIZE;
         freed.extend(freed_pages.iter().map(|offset| (*offset, PAGE_SIZE as u64)));
         // Map pages of complete new ranges (all beyond the committed EOF) go before the commit point.
         if let Some(record) = next_offset.record.as_mut() {
@@ -1665,8 +2179,12 @@ impl WriterCore {
             header.reserve_node(*node)?;
         }
         header.root_mut().set_btrees(nbt_ref, bbt_ref);
-        header.root_mut().set_file_eof_index(UnicodeByteIndex::new(new_eof));
-        header.root_mut().set_amap_last_index(UnicodeByteIndex::new(amap_last));
+        header
+            .root_mut()
+            .set_file_eof_index(UnicodeByteIndex::new(new_eof));
+        header
+            .root_mut()
+            .set_amap_last_index(UnicodeByteIndex::new(amap_last));
         header.update_unique();
         file.seek(SeekFrom::Start(0))?;
         header.write(file)?;
@@ -1679,24 +2197,37 @@ impl WriterCore {
         file.sync_data()?;
         // MS-PST deprecates the header's rgbFM and rgbFP: they MUST be 0xFF, which is what Outlook writes and SCANPST restores.
         <UnicodeHeader as HeaderReadWrite<UnicodePstFile>>::first_free_map(&mut header).fill(0xFF);
-        <UnicodeHeader as HeaderReadWrite<UnicodePstFile>>::first_free_page_map(&mut header).fill(0xFF);
+        <UnicodeHeader as HeaderReadWrite<UnicodePstFile>>::first_free_page_map(&mut header)
+            .fill(0xFF);
         header.update_unique();
-        header.root_mut().set_amap_last_index(UnicodeByteIndex::new(AMAP_FIRST_OFFSET + amap_count.saturating_sub(1) * AMAP_DATA_SIZE));
-        header.root_mut().reset_free_size(UnicodeByteIndex::new(free_bytes))?;
+        header.root_mut().set_amap_last_index(UnicodeByteIndex::new(
+            AMAP_FIRST_OFFSET + amap_count.saturating_sub(1) * AMAP_DATA_SIZE,
+        ));
+        header
+            .root_mut()
+            .reset_free_size(UnicodeByteIndex::new(free_bytes))?;
         header.root_mut().set_amap_status(AmapStatus::Valid2);
         file.seek(SeekFrom::Start(0))?;
         header.write(file)?;
         file.flush()?;
 
         // Density list: what ensure_density_list and finish_write did with the file reopened.
-        let keep = state.density_list.as_ref().is_some_and(|list| list.trailer().block_id() == header.next_page());
+        let keep = state
+            .density_list
+            .as_ref()
+            .is_some_and(|list| list.trailer().block_id() == header.next_page());
         if !keep {
-            let current_page = u32::try_from((header.root().amap_last_index().index() - AMAP_FIRST_OFFSET) / AMAP_DATA_SIZE)
-                .map_err(|_| PstError::IntegerConversion)?;
+            let current_page = u32::try_from(
+                (header.root().amap_last_index().index() - AMAP_FIRST_OFFSET) / AMAP_DATA_SIZE,
+            )
+            .map_err(|_| PstError::IntegerConversion)?;
             let block_id = header.next_page();
-            let signature = PageType::DensityList.signature(ndb::page::DENSITY_LIST_FILE_OFFSET, block_id.into_u64());
+            let signature = PageType::DensityList
+                .signature(ndb::page::DENSITY_LIST_FILE_OFFSET, block_id.into_u64());
             let trailer = UnicodePageTrailer::new(PageType::DensityList, signature, block_id, 0);
-            state.density_list = Some(<UnicodeDensityListPage as DensityListPageReadWrite<UnicodePstFile>>::new(false, current_page, &[], trailer)?);
+            state.density_list = Some(<UnicodeDensityListPage as DensityListPageReadWrite<
+                UnicodePstFile,
+            >>::new(false, current_page, &[], trailer)?);
         }
         header.update_unique();
         header.root_mut().set_amap_status(AmapStatus::Valid2);
@@ -1729,7 +2260,11 @@ impl WriterCore {
         for change in changes.bbt.values().flatten().chain(appended_last.iter()) {
             let index = change.block().block().index();
             state.max_block_index = Some(state.max_block_index.map_or(index, |max| max.max(index)));
-            state.max_bbt_key = Some(state.max_bbt_key.map_or(change.key(), |max| max.max(change.key())));
+            state.max_bbt_key = Some(
+                state
+                    .max_bbt_key
+                    .map_or(change.key(), |max| max.max(change.key())),
+            );
         }
         state.header = header;
         self.state = Some(state);
@@ -1744,10 +2279,17 @@ impl WriterCore {
     /// Test-only proof that the session's state equals a fresh read of the file, and that its allocation map equals a
     /// full rebuild from the B-trees on disk (on a copy of the file).
     #[cfg(test)]
-    fn assert_matches_disk(&mut self, bbt_changes: BTreeMap<u64, Option<UnicodeBlockBTreeEntry>>, nbt_changes: BTreeMap<u64, Option<UnicodeNodeBTreeEntry>>) -> io::Result<()> {
+    fn assert_matches_disk(
+        &mut self,
+        bbt_changes: BTreeMap<u64, Option<UnicodeBlockBTreeEntry>>,
+        nbt_changes: BTreeMap<u64, Option<UnicodeNodeBTreeEntry>>,
+    ) -> io::Result<()> {
         // The B-trees: both are well formed and their cached pages equal the disk, and their entries equal the entries
         // before this commit with its changes applied (a full-entry shadow kept by the tests).
-        fn apply_shadow<E: DiskEntry>(shadow: &mut BTreeMap<u64, E>, changes: BTreeMap<u64, Option<E>>) {
+        fn apply_shadow<E: DiskEntry>(
+            shadow: &mut BTreeMap<u64, E>,
+            changes: BTreeMap<u64, Option<E>>,
+        ) {
             for (key, change) in changes {
                 match change {
                     Some(entry) => shadow.insert(key, entry),
@@ -1756,40 +2298,90 @@ impl WriterCore {
             }
         }
         fn encoded<E: DiskEntry>(entries: impl Iterator<Item = E>) -> Vec<Vec<u8>> {
-            entries.map(|entry| { let mut bytes = Vec::new(); entry.write(&mut bytes).unwrap(); bytes }).collect()
+            entries
+                .map(|entry| {
+                    let mut bytes = Vec::new();
+                    entry.write(&mut bytes).unwrap();
+                    bytes
+                })
+                .collect()
         }
-        let (shadow_bbt, shadow_nbt) = self.shadow.as_mut().expect("the test shadow is set at open");
+        let (shadow_bbt, shadow_nbt) = self
+            .shadow
+            .as_mut()
+            .expect("the test shadow is set at open");
         apply_shadow(shadow_bbt, bbt_changes);
         apply_shadow(shadow_nbt, nbt_changes);
         let state = self.state.as_ref().unwrap();
         state.bbt.assert_well_formed();
         state.nbt.assert_well_formed();
         let fresh = CommittedState::read_any(&mut self.file, None)?;
-        assert_eq!(encoded(fresh.bbt.entries()?.into_iter()), encoded(shadow_bbt.values().copied()), "BBT entries = previous entries + this commit's changes");
-        assert_eq!(encoded(fresh.nbt.entries()?.into_iter()), encoded(shadow_nbt.values().copied()), "NBT entries = previous entries + this commit's changes");
+        assert_eq!(
+            encoded(fresh.bbt.entries()?.into_iter()),
+            encoded(shadow_bbt.values().copied()),
+            "BBT entries = previous entries + this commit's changes"
+        );
+        assert_eq!(
+            encoded(fresh.nbt.entries()?.into_iter()),
+            encoded(shadow_nbt.values().copied()),
+            "NBT entries = previous entries + this commit's changes"
+        );
         // The session's allocation state: its EOF and free total are the file's, its cached AMap pages are as on disk,
         // and every run it may allocate from is free on disk and below EOF.
         let space = FileSpace::read(&mut self.file, state.header.root())?;
         assert_eq!(state.amap.eof, space.eof, "session EOF");
-        assert_eq!(state.amap.free_total, state.header.root().amap_free_size().index(), "session free total");
+        assert_eq!(
+            state.amap.free_total,
+            state.header.root().amap_free_size().index(),
+            "session free total"
+        );
         // MS-PST 2.6.1.1.2, "The PST file MUST grow at integer multiples of the number of bytes mapped by an AMap", so
         // the file ends where an AMap range ends, and cbAMapFree is free space inside the file.
-        assert_eq!((space.eof - AMAP_FIRST_OFFSET) % AMAP_DATA_SIZE, 0, "EOF {:#x} at the end of an AMap range", space.eof);
+        assert_eq!(
+            (space.eof - AMAP_FIRST_OFFSET) % AMAP_DATA_SIZE,
+            0,
+            "EOF {:#x} at the end of an AMap range",
+            space.eof
+        );
         assert_eq!(self.file.metadata()?.len(), space.eof, "file length = EOF");
-        assert_eq!(space.free.iter().map(|(start, end)| end - start).sum::<u64>(), state.amap.free_total, "cbAMapFree = free space below EOF");
-        assert!(state.amap.free_runs.len() <= FREE_RUN_CAP, "session free runs bounded");
+        assert_eq!(
+            space
+                .free
+                .iter()
+                .map(|(start, end)| end - start)
+                .sum::<u64>(),
+            state.amap.free_total,
+            "cbAMapFree = free space below EOF"
+        );
+        assert!(
+            state.amap.free_runs.len() <= FREE_RUN_CAP,
+            "session free runs bounded"
+        );
         for (index, bits) in &state.amap.cache {
-            assert_eq!(*bits, read_amap_bits(&mut self.file, *index)?, "cached AMap page {index}");
+            assert_eq!(
+                *bits,
+                read_amap_bits(&mut self.file, *index)?,
+                "cached AMap page {index}"
+            );
         }
         for (start, end) in &state.amap.free_runs {
             assert!(*end <= space.eof, "free run {start:#x}..{end:#x} below EOF");
             assert!(
-                space.free.iter().any(|(free_start, free_end)| free_start <= start && end <= free_end),
+                space
+                    .free
+                    .iter()
+                    .any(|(free_start, free_end)| free_start <= start && end <= free_end),
                 "session free run {start:#x}..{end:#x} is free on disk"
             );
         }
-        assert_eq!(fresh.max_node_index, state.max_node_index, "session max node indexes");
-        assert_eq!(fresh.max_block_index, state.max_block_index, "session max block index");
+        assert_eq!(
+            fresh.max_node_index, state.max_node_index,
+            "session max node indexes"
+        );
+        assert_eq!(
+            fresh.max_block_index, state.max_block_index,
+            "session max block index"
+        );
         let mut header_bytes = Vec::new();
         state.header.write(&mut header_bytes)?;
         let mut disk_header = vec![0; header_bytes.len()];
@@ -1798,7 +2390,9 @@ impl WriterCore {
         assert_eq!(disk_header, header_bytes, "session header");
 
         // Full rebuild of the allocation map on a copy, from the B-trees on disk.
-        let copy = self.path.with_extension(format!("amap-check-{}.pst", std::process::id()));
+        let copy = self
+            .path
+            .with_extension(format!("amap-check-{}.pst", std::process::id()));
         std::fs::copy(&self.path, &copy)?;
         {
             let mut handle = OpenOptions::new().read(true).write(true).open(&copy)?;
@@ -1816,18 +2410,34 @@ impl WriterCore {
         let count = amap_page_count(state.header.root().file_eof_index().index());
         for index in 0..count {
             let offset = amap_page_base(index as usize) as usize;
-            assert_eq!(&original[offset..offset + PAGE_SIZE], &rebuilt[offset..offset + PAGE_SIZE], "AMap page {index} equals a full rebuild");
+            assert_eq!(
+                &original[offset..offset + PAGE_SIZE],
+                &rebuilt[offset..offset + PAGE_SIZE],
+                "AMap page {index} equals a full rebuild"
+            );
         }
         for index in 0..count.div_ceil(PMAP_PAGE_COUNT) {
             let offset = (index * PMAP_DATA_SIZE + PMAP_FIRST_OFFSET) as usize;
-            assert_eq!(&original[offset..offset + PAGE_SIZE], &rebuilt[offset..offset + PAGE_SIZE], "PMap page {index}");
+            assert_eq!(
+                &original[offset..offset + PAGE_SIZE],
+                &rebuilt[offset..offset + PAGE_SIZE],
+                "PMap page {index}"
+            );
         }
         for index in 0..(count.max(FMAP_FIRST_SIZE) - FMAP_FIRST_SIZE).div_ceil(FMAP_PAGE_COUNT) {
             let offset = (index * FMAP_DATA_SIZE + FMAP_FIRST_OFFSET) as usize;
-            assert_eq!(&original[offset..offset + PAGE_SIZE], &rebuilt[offset..offset + PAGE_SIZE], "FMap page {index}");
+            assert_eq!(
+                &original[offset..offset + PAGE_SIZE],
+                &rebuilt[offset..offset + PAGE_SIZE],
+                "FMap page {index}"
+            );
         }
         let rebuilt_header = UnicodeHeader::read(&mut Cursor::new(&rebuilt))?;
-        assert_eq!(rebuilt_header.root().amap_free_size().index(), state.header.root().amap_free_size().index(), "free size equals a full rebuild");
+        assert_eq!(
+            rebuilt_header.root().amap_free_size().index(),
+            state.header.root().amap_free_size().index(),
+            "free size equals a full rebuild"
+        );
         Ok(())
     }
 }
@@ -1846,23 +2456,61 @@ impl WriterCore {
             .contents_table()
             .cloned()
             .unwrap();
-        let contents = state.nbt.get(node_key(NodeId::new(NodeIdType::ContentsTable, folder.index())?))?.unwrap();
-        let subnodes = collect_subnode_entries(&mut self.file, *state.header.root().block_btree(), contents.sub_node())?;
+        let contents = state
+            .nbt
+            .get(node_key(NodeId::new(
+                NodeIdType::ContentsTable,
+                folder.index(),
+            )?))?
+            .unwrap();
+        let subnodes = collect_subnode_entries(
+            &mut self.file,
+            *state.header.root().block_btree(),
+            contents.sub_node(),
+        )?;
         let rows_node = table_rows_node(table.context(), &subnodes)?;
-        let rows = subnodes.iter().find(|entry| entry.node() == rows_node).map(|entry| entry.block());
-        let fresh = load_contents_state(table.as_ref(), contents.data(), rows, unread_rows(table.as_ref())?)?
-            .expect("a cached table state must be loadable from disk");
+        let rows = subnodes
+            .iter()
+            .find(|entry| entry.node() == rows_node)
+            .map(|entry| entry.block());
+        let fresh = load_contents_state(
+            table.as_ref(),
+            contents.data(),
+            rows,
+            unread_rows(table.as_ref())?,
+        )?
+        .expect("a cached table state must be loadable from disk");
         assert_eq!(fresh.row_count, cached.row_count, "cached row count");
         assert_eq!(fresh.last_id, cached.last_id, "cached last row id");
-        assert_eq!(fresh.unread, cached.unread, "cached unread count equals a recount");
-        assert_eq!(u64::from(fresh.heap_root), u64::from(cached.heap_root), "cached heap root");
-        assert_eq!(u64::from(fresh.rows_root), u64::from(cached.rows_root), "cached rows root");
+        assert_eq!(
+            fresh.unread, cached.unread,
+            "cached unread count equals a recount"
+        );
+        assert_eq!(
+            u64::from(fresh.heap_root),
+            u64::from(cached.heap_root),
+            "cached heap root"
+        );
+        assert_eq!(
+            u64::from(fresh.rows_root),
+            u64::from(cached.rows_root),
+            "cached rows root"
+        );
         // The next append reads its pages from disk; the committed table must have the shape its view takes, and the
         // view must see the table the reader sees.
         let tx = Tx::new(state);
-        let view = open_contents_append(&mut self.file, &tx, cached)?.expect("the append view opens on the committed table");
-        assert_eq!(format!("{:?}", view.context), format!("{:?}", table.context()), "append view context");
-        assert_eq!(view.heap.count, table.writer_heap_pages()?.len(), "append view heap page count");
+        let view = open_contents_append(&mut self.file, &tx, cached)?
+            .expect("the append view opens on the committed table");
+        assert_eq!(
+            format!("{:?}", view.context),
+            format!("{:?}", table.context()),
+            "append view context"
+        );
+        assert_eq!(
+            view.heap.count,
+            table.writer_heap_pages()?.len(),
+            "append view heap page count"
+        );
         Ok(())
     }
 }
@@ -1899,16 +2547,43 @@ impl WriterCore {
             .hierarchy_table()
             .cloned()
             .unwrap();
-        let entry = state.nbt.get(node_key(NodeId::new(NodeIdType::HierarchyTable, parent.index())?))?.unwrap();
-        let subnodes = collect_subnode_entries(&mut self.file, *state.header.root().block_btree(), entry.sub_node())?;
+        let entry = state
+            .nbt
+            .get(node_key(NodeId::new(
+                NodeIdType::HierarchyTable,
+                parent.index(),
+            )?))?
+            .unwrap();
+        let subnodes = collect_subnode_entries(
+            &mut self.file,
+            *state.header.root().block_btree(),
+            entry.sub_node(),
+        )?;
         let rows_node = table_rows_node(table.context(), &subnodes)?;
-        let rows = subnodes.iter().find(|entry| entry.node() == rows_node).map(|entry| entry.block());
+        let rows = subnodes
+            .iter()
+            .find(|entry| entry.node() == rows_node)
+            .map(|entry| entry.block());
         let fresh = load_contents_state(table.as_ref(), entry.data(), rows, 0)?
             .expect("a cached hierarchy state must be loadable from disk");
-        assert_eq!(fresh.row_count, cached.row_count, "cached hierarchy row count");
-        assert_eq!(fresh.last_id, cached.last_id, "cached hierarchy last row id");
-        assert_eq!(u64::from(fresh.heap_root), u64::from(cached.heap_root), "cached hierarchy heap root");
-        assert_eq!(u64::from(fresh.rows_root), u64::from(cached.rows_root), "cached hierarchy rows root");
+        assert_eq!(
+            fresh.row_count, cached.row_count,
+            "cached hierarchy row count"
+        );
+        assert_eq!(
+            fresh.last_id, cached.last_id,
+            "cached hierarchy last row id"
+        );
+        assert_eq!(
+            u64::from(fresh.heap_root),
+            u64::from(cached.heap_root),
+            "cached hierarchy heap root"
+        );
+        assert_eq!(
+            u64::from(fresh.rows_root),
+            u64::from(cached.rows_root),
+            "cached hierarchy rows root"
+        );
         Ok(())
     }
 }
@@ -1916,11 +2591,20 @@ impl WriterCore {
 /// Block reference counts from what this commit changed (the delta form of `update_block_ref_counts`): node entries
 /// replaced or added, new internal blocks, and internal blocks that lose their last reference. When the stored counts
 /// do not add up, falls back to the full `compact_unicode_block_tree` over all entries (O(blocks), rare).
-fn update_block_ref_counts_delta(file: &mut File, state: &CommittedState, changes: &mut Changes) -> io::Result<()> {
-    let view = |changes: &Changes, key: u64| -> io::Result<Option<UnicodeBlockBTreeEntry>> { changes.block(state, key) };
+fn update_block_ref_counts_delta(
+    file: &mut File,
+    state: &CommittedState,
+    changes: &mut Changes,
+) -> io::Result<()> {
+    let view = |changes: &Changes, key: u64| -> io::Result<Option<UnicodeBlockBTreeEntry>> {
+        changes.block(state, key)
+    };
     let mut delta = HashMap::<u64, i32>::new();
     let add = |delta: &mut HashMap<u64, i32>, block: Option<UnicodeBlockId>, change| {
-        if let Some(key) = block.map(|block| block.search_key()).filter(|key| *key != 0) {
+        if let Some(key) = block
+            .map(|block| block.search_key())
+            .filter(|key| *key != 0)
+        {
             *delta.entry(key).or_default() += change;
         }
     };
@@ -1949,8 +2633,17 @@ fn update_block_ref_counts_delta(file: &mut File, state: &CommittedState, change
         }
     }
     // How many new internal blocks this filter keeps from being walked (measured).
-    count_op!(PRECOUNTED_FILTERED, new_internal.iter().filter(|entry| changes.precounted.contains(&entry.key())).count());
-    for entry in new_internal.iter().filter(|entry| !changes.precounted.contains(&entry.key())) {
+    count_op!(
+        PRECOUNTED_FILTERED,
+        new_internal
+            .iter()
+            .filter(|entry| changes.precounted.contains(&entry.key()))
+            .count()
+    );
+    for entry in new_internal
+        .iter()
+        .filter(|entry| !changes.precounted.contains(&entry.key()))
+    {
         for child in internal_block_children(file, entry)? {
             add(&mut delta, Some(child), 1);
         }
@@ -1972,7 +2665,11 @@ fn update_block_ref_counts_delta(file: &mut File, state: &CommittedState, change
             consistent = false;
             break;
         }
-        if count == 1 && entry.block().block().is_internal() && released.insert(key) && !changes.released_handled.contains(&key) {
+        if count == 1
+            && entry.block().block().is_internal()
+            && released.insert(key)
+            && !changes.released_handled.contains(&key)
+        {
             for child in internal_block_children(file, &entry)? {
                 add(&mut delta, Some(child), -1);
                 pending.push(child.search_key());
@@ -1980,7 +2677,12 @@ fn update_block_ref_counts_delta(file: &mut File, state: &CommittedState, change
         }
     }
     // A release the creator accounted for that did not happen would leave its children's counts wrong.
-    if consistent && !changes.released_handled.iter().all(|key| released.contains(key)) {
+    if consistent
+        && !changes
+            .released_handled
+            .iter()
+            .all(|key| released.contains(key))
+    {
         consistent = false;
     }
     count_op!(REFCOUNT_DELTA_ENTRIES, delta.len());
@@ -2012,7 +2714,8 @@ fn update_block_ref_counts_delta(file: &mut File, state: &CommittedState, change
         let mut entries: Vec<UnicodeBlockBTreeEntry> = changes.all_block_entries(state)?;
         let nodes: Vec<UnicodeNodeBTreeEntry> = merged_entries(&state.nbt, &changes.nbt)?;
         compact_unicode_block_tree(file, &mut entries, &nodes)?;
-        let after: HashMap<u64, UnicodeBlockBTreeEntry> = entries.iter().map(|entry| (entry.key(), *entry)).collect();
+        let after: HashMap<u64, UnicodeBlockBTreeEntry> =
+            entries.iter().map(|entry| (entry.key(), *entry)).collect();
         for entry in changes.all_block_entries(state)? {
             match after.get(&entry.key()) {
                 Some(kept) if !same_btree_entry(kept, &entry) => {
@@ -2041,15 +2744,31 @@ fn update_block_ref_counts_delta(file: &mut File, state: &CommittedState, change
         let mut full = before;
         let nodes: Vec<UnicodeNodeBTreeEntry> = merged_entries(&state.nbt, &changes.nbt)?;
         compact_unicode_block_tree(file, &mut full, &nodes)?;
-        let counts = |entries: &[UnicodeBlockBTreeEntry]| entries.iter().map(|entry| (entry.key(), entry.ref_count())).collect::<Vec<_>>();
-        assert_eq!(counts(&changes.all_block_entries(state)?), counts(&full), "incremental block ref counts");
+        let counts = |entries: &[UnicodeBlockBTreeEntry]| {
+            entries
+                .iter()
+                .map(|entry| (entry.key(), entry.ref_count()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            counts(&changes.all_block_entries(state)?),
+            counts(&full),
+            "incremental block ref counts"
+        );
     }
     Ok(())
 }
 
 /// All entries of a committed tree with a commit's changes applied, in key order (O(entries): fallback and tests).
-fn merged_entries<E: DiskEntry>(tree: &DiskTree<E>, changes: &BTreeMap<u64, Option<E>>) -> io::Result<Vec<E>> {
-    let mut merged: BTreeMap<u64, E> = tree.entries()?.into_iter().map(|entry| (entry.key(), entry)).collect();
+fn merged_entries<E: DiskEntry>(
+    tree: &DiskTree<E>,
+    changes: &BTreeMap<u64, Option<E>>,
+) -> io::Result<Vec<E>> {
+    let mut merged: BTreeMap<u64, E> = tree
+        .entries()?
+        .into_iter()
+        .map(|entry| (entry.key(), entry))
+        .collect();
     for (key, change) in changes {
         match change {
             Some(entry) => {
@@ -2075,7 +2794,9 @@ impl UnicodePstWriter {
     /// opening it again after the first item would read every B-tree and allocation-map page of what that item wrote
     /// (41,585 B-tree and 7,300 map pages after a 1.5 GiB attachment). The file must not exist; a failure removes it.
     pub fn create(path: impl AsRef<Path>) -> io::Result<Self> {
-        Ok(Self { core: create_unicode_session(path.as_ref())? })
+        Ok(Self {
+            core: create_unicode_session(path.as_ref())?,
+        })
     }
 
     /// Open an existing unencrypted or permute-encoded Unicode PST for appending.
@@ -2103,7 +2824,10 @@ impl UnicodePstWriter {
     }
 
     /// Append messages and their attachments to the store's default receive folder in one commit.
-    pub fn append_many_with_attachments(&mut self, messages: &[UnicodePstBatchMessage<'_>]) -> io::Result<()> {
+    pub fn append_many_with_attachments(
+        &mut self,
+        messages: &[UnicodePstBatchMessage<'_>],
+    ) -> io::Result<()> {
         append_unicode_pst(&mut self.core, messages, None)
     }
 
@@ -2145,8 +2869,14 @@ mod tests {
     }];
 
     fn temp(name: &str) -> PathBuf {
-        let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        std::env::temp_dir().join(format!("outlook-pst-session-{name}-{}-{stamp}.pst", std::process::id()))
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "outlook-pst-session-{name}-{}-{stamp}.pst",
+            std::process::id()
+        ))
     }
 
     fn message<'a>(subject: &'a str, id: &'a str, is_read: bool) -> UnicodePstMessage<'a> {
@@ -2162,7 +2892,11 @@ mod tests {
             search_key: None,
             is_read,
             importance: UnicodePstImportance::Normal,
-            sender: Some(UnicodePstSender { name: "sender", email: "sender@example.com", address_type: "SMTP" }),
+            sender: Some(UnicodePstSender {
+                name: "sender",
+                email: "sender@example.com",
+                address_type: "SMTP",
+            }),
             client_submit_time: None,
             categories: &[],
             transport_headers: None,
@@ -2182,33 +2916,52 @@ mod tests {
         let mut core = WriterCore::open(path).unwrap();
         let node = ensure_unicode_folder_path(&mut core, folder_path).unwrap();
         let store = core.store().unwrap();
-        let folder = store.open_folder(&store.properties().make_entry_id(node).unwrap()).unwrap();
-        (folder.properties().content_count().unwrap(), folder.properties().unread_count().unwrap())
+        let folder = store
+            .open_folder(&store.properties().make_entry_id(node).unwrap())
+            .unwrap();
+        (
+            folder.properties().content_count().unwrap(),
+            folder.properties().unread_count().unwrap(),
+        )
     }
 
     #[test]
     fn many_session_commits_keep_the_search_queue_and_folder_counters() {
         let path = temp("queue");
-        drop(UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap());
+        drop(
+            UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap(),
+        );
         let initial = queue(&path).len();
         let subjects: Vec<String> = (0..900).map(|index| format!("message {index}")).collect();
-        let ids: Vec<String> = (0..900).map(|index| format!("<m{index}@example.com>")).collect();
+        let ids: Vec<String> = (0..900)
+            .map(|index| format!("<m{index}@example.com>"))
+            .collect();
         let mut writer = UnicodePstWriter::open(&path).unwrap();
         // 6 commits of 150 messages over two folders: 902 queue records cross two 8176-byte leaves (408 records each).
         for batch in 0..6 {
-            let folder_path: &[&str] = if batch % 2 == 0 { &["Inbox"] } else { &["Inbox", "Sub"] };
+            let folder_path: &[&str] = if batch % 2 == 0 {
+                &["Inbox"]
+            } else {
+                &["Inbox", "Sub"]
+            };
             let batch: Vec<UnicodePstBatchMessage<'_>> = (batch * 150..(batch + 1) * 150)
                 .map(|index| UnicodePstBatchMessage {
                     message: message(&subjects[index], &ids[index], index % 3 == 0),
                     attachments: &[],
                 })
                 .collect();
-            writer.append_many_in_folder_with_attachments(folder_path, &batch).unwrap();
+            writer
+                .append_many_in_folder_with_attachments(folder_path, &batch)
+                .unwrap();
         }
         writer.close().unwrap();
 
         let updates = queue(&path);
-        assert_eq!(updates.len(), initial + 900 + 2, "one record per message plus FolderAdded and FolderModified");
+        assert_eq!(
+            updates.len(),
+            initial + 900 + 2,
+            "one record per message plus FolderAdded and FolderModified"
+        );
         let added = updates[initial..]
             .iter()
             .filter(|update| matches!(update.data(), Some(SearchUpdateData::MessageAdded { .. })))
@@ -2217,14 +2970,29 @@ mod tests {
         // The queue is a data tree whose leaves are full but the last.
         let mut core = WriterCore::open(&path).unwrap();
         let state = core.state.take().unwrap();
-        let entry = state.nbt.get(node_key(NID_SEARCH_MANAGEMENT_QUEUE)).unwrap().unwrap();
+        let entry = state
+            .nbt
+            .get(node_key(NID_SEARCH_MANAGEMENT_QUEUE))
+            .unwrap()
+            .unwrap();
         let leaves = data_tree_leaves(&mut core.file, &Tx::new(&state), entry.data()).unwrap();
         assert!(leaves.len() > 2);
-        assert!(leaves[..leaves.len() - 1].iter().all(|(_, size)| *size as usize == MAX_DATA_BLOCK_SIZE));
+        assert!(leaves[..leaves.len() - 1]
+            .iter()
+            .all(|(_, size)| *size as usize == MAX_DATA_BLOCK_SIZE));
 
-        let unread = |range: std::ops::Range<usize>| range.filter(|index| index % 3 != 0).count() as i32;
-        let inbox: usize = [0, 2, 4].iter().map(|batch| batch * 150).map(|start| unread(start..start + 150) as usize).sum();
-        let sub: usize = [1, 3, 5].iter().map(|batch| batch * 150).map(|start| unread(start..start + 150) as usize).sum();
+        let unread =
+            |range: std::ops::Range<usize>| range.filter(|index| index % 3 != 0).count() as i32;
+        let inbox: usize = [0, 2, 4]
+            .iter()
+            .map(|batch| batch * 150)
+            .map(|start| unread(start..start + 150) as usize)
+            .sum();
+        let sub: usize = [1, 3, 5]
+            .iter()
+            .map(|batch| batch * 150)
+            .map(|start| unread(start..start + 150) as usize)
+            .sum();
         assert_eq!(folder(&path, &["Inbox"]), (1 + 450, inbox as i32));
         assert_eq!(folder(&path, &["Inbox", "Sub"]), (450, sub as i32));
         std::fs::remove_file(path).unwrap();
@@ -2237,20 +3005,35 @@ mod tests {
         // session is reopened half way (a fresh full load). After every commit the test build checks the state against
         // a fresh load from disk, the append view against the reader, and the reference counts against a full recount.
         let path = temp("contents-two-levels");
-        drop(UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap());
+        drop(
+            UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap(),
+        );
         let fallbacks = REFCOUNT_FALLBACKS.with(std::cell::Cell::get);
         let total = 17 * 4096 + 3 * 300;
-        let subjects: Vec<String> = (0..total).map(|index| format!("contents message {index} {}", "x".repeat(index % 40))).collect();
-        let ids: Vec<String> = (0..total).map(|index| format!("<c{index}@example.com>")).collect();
+        let subjects: Vec<String> = (0..total)
+            .map(|index| format!("contents message {index} {}", "x".repeat(index % 40)))
+            .collect();
+        let ids: Vec<String> = (0..total)
+            .map(|index| format!("<c{index}@example.com>"))
+            .collect();
         let mut next = 0;
         let mut expected = [(1_i32, 0_i32), (0, 0)];
         let mut writer = UnicodePstWriter::open(&path).unwrap();
         for commit in 0..20 {
-            let (folder_path, count, slot): (&[&str], usize, usize) = if commit % 6 == 5 { (&["Inbox"], 300, 0) } else { (&["Inbox", "Big"], 4096, 1) };
+            let (folder_path, count, slot): (&[&str], usize, usize) = if commit % 6 == 5 {
+                (&["Inbox"], 300, 0)
+            } else {
+                (&["Inbox", "Big"], 4096, 1)
+            };
             let batch: Vec<UnicodePstBatchMessage<'_>> = (next..next + count)
-                .map(|index| UnicodePstBatchMessage { message: message(&subjects[index], &ids[index], index % 3 == 0), attachments: &[] })
+                .map(|index| UnicodePstBatchMessage {
+                    message: message(&subjects[index], &ids[index], index % 3 == 0),
+                    attachments: &[],
+                })
                 .collect();
-            writer.append_many_in_folder_with_attachments(folder_path, &batch).unwrap();
+            writer
+                .append_many_in_folder_with_attachments(folder_path, &batch)
+                .unwrap();
             expected[slot].0 += count as i32;
             expected[slot].1 += (next..next + count).filter(|index| index % 3 != 0).count() as i32;
             next += count;
@@ -2266,23 +3049,57 @@ mod tests {
         let mut core = WriterCore::open(&path).unwrap();
         let node = ensure_unicode_folder_path(&mut core, &["Inbox", "Big"]).unwrap();
         let store = core.store().unwrap();
-        let table = store.open_folder(&store.properties().make_entry_id(node).unwrap()).unwrap().contents_table().cloned().unwrap();
+        let table = store
+            .open_folder(&store.properties().make_entry_id(node).unwrap())
+            .unwrap()
+            .contents_table()
+            .cloned()
+            .unwrap();
         assert_eq!(table.rows_matrix().count(), expected[1].0 as usize);
         let state = core.state.take().unwrap();
-        let contents = state.nbt.get(node_key(NodeId::new(NodeIdType::ContentsTable, node.index()).unwrap())).unwrap().unwrap();
-        let subnodes = collect_subnode_entries(&mut core.file, *state.header.root().block_btree(), contents.sub_node()).unwrap();
+        let contents = state
+            .nbt
+            .get(node_key(
+                NodeId::new(NodeIdType::ContentsTable, node.index()).unwrap(),
+            ))
+            .unwrap()
+            .unwrap();
+        let subnodes = collect_subnode_entries(
+            &mut core.file,
+            *state.header.root().block_btree(),
+            contents.sub_node(),
+        )
+        .unwrap();
         let rows_node = table_rows_node(table.context(), &subnodes).unwrap();
-        let rows = subnodes.iter().find(|entry| entry.node() == rows_node).unwrap().block();
+        let rows = subnodes
+            .iter()
+            .find(|entry| entry.node() == rows_node)
+            .unwrap()
+            .block();
         let tx = Tx::new(&state);
-        let heap_tree = DataTreePath::open(&mut core.file, &tx, contents.data()).unwrap().unwrap();
-        let rows_tree = DataTreePath::open(&mut core.file, &tx, rows).unwrap().unwrap();
-        assert_eq!((heap_tree.level, rows_tree.level), (2, 2), "heap {} leaves, rows {} leaves", heap_tree.leaves, rows_tree.leaves);
+        let heap_tree = DataTreePath::open(&mut core.file, &tx, contents.data())
+            .unwrap()
+            .unwrap();
+        let rows_tree = DataTreePath::open(&mut core.file, &tx, rows)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (heap_tree.level, rows_tree.level),
+            (2, 2),
+            "heap {} leaves, rows {} leaves",
+            heap_tree.leaves,
+            rows_tree.leaves
+        );
         // Past one XXBLOCK of heap pages, every page's fill level (HNHDR and many HNBITMAPHDRs) is right after the
         // appends changed pages along their paths.
         assert!(assert_fill_levels(&mut core.file, &tx, contents.data()) > 1021);
         drop(tx);
         // Every append's stated reference changes added up: none needed the full recount.
-        assert_eq!(REFCOUNT_FALLBACKS.with(std::cell::Cell::get), fallbacks, "a commit fell back to the full reference recount");
+        assert_eq!(
+            REFCOUNT_FALLBACKS.with(std::cell::Cell::get),
+            fallbacks,
+            "a commit fell back to the full reference recount"
+        );
         std::fs::remove_file(path).unwrap();
     }
 
@@ -2299,8 +3116,15 @@ mod tests {
         }
         for (page, level) in &stored {
             // A non-final page is a full block with free bytes after its page map.
-            let expected = leaves.get(*page).map_or(0, |(block, _)| fill_level(heap_page_free(&read_data_block(file, bbt, *block).unwrap())) as u8);
-            assert_eq!(*level as u8, expected, "fill level of heap page {page} of {}", leaves.len());
+            let expected = leaves.get(*page).map_or(0, |(block, _)| {
+                fill_level(heap_page_free(&read_data_block(file, bbt, *block).unwrap())) as u8
+            });
+            assert_eq!(
+                *level as u8,
+                expected,
+                "fill level of heap page {page} of {}",
+                leaves.len()
+            );
         }
         leaves.len()
     }
@@ -2311,7 +3135,12 @@ mod tests {
     fn unreferenced_heap_allocations(table: &dyn TableContext) -> usize {
         let pages = table.writer_heap_pages().unwrap();
         let mut used = BTreeSet::new();
-        let slot = |hid: HeapId| (usize::from(hid.block_index()), usize::from(hid.index().unwrap()) + 1);
+        let slot = |hid: HeapId| {
+            (
+                usize::from(hid.block_index()),
+                usize::from(hid.index().unwrap()) + 1,
+            )
+        };
         let get = |hid: HeapId| -> &[u8] {
             let (page, index) = slot(hid);
             &pages[page][index]
@@ -2321,21 +3150,30 @@ mod tests {
         if u32::from(context.row_index()) != 0 {
             used.insert(slot(context.row_index()));
             let index = HeapTreeHeader::read(&mut get(context.row_index())).unwrap();
-            let mut nodes = if u32::from(index.root()) == 0 { vec![] } else { vec![index.root()] };
+            let mut nodes = if u32::from(index.root()) == 0 {
+                vec![]
+            } else {
+                vec![index.root()]
+            };
             for level in (0..=index.levels()).rev() {
                 let mut children = Vec::new();
                 for node in nodes {
                     used.insert(slot(node));
                     if level > 0 {
                         for record in get(node).chunks(8) {
-                            children.push(HeapId::from(u32::from_le_bytes(record[4..].try_into().unwrap())));
+                            children.push(HeapId::from(u32::from_le_bytes(
+                                record[4..].try_into().unwrap(),
+                            )));
                         }
                     }
                 }
                 nodes = children;
             }
         }
-        if let Some(rows) = context.rows().filter(|rows| matches!(rows.id_type(), Ok(NodeIdType::HeapNode))) {
+        if let Some(rows) = context
+            .rows()
+            .filter(|rows| matches!(rows.id_type(), Ok(NodeIdType::HeapNode)))
+        {
             used.insert(slot(HeapId::from(u32::from(rows))));
         }
         for row in table.rows_matrix() {
@@ -2369,14 +3207,31 @@ mod tests {
     fn hierarchy_garbage(path: &Path) -> Vec<(String, usize)> {
         let store = UnicodeStore::read(Rc::new(UnicodePstFile::open(path).unwrap())).unwrap();
         let mut out = Vec::new();
-        let mut stack = vec![(String::from("/"), store.properties().ipm_sub_tree_entry_id().unwrap().node_id())];
+        let mut stack = vec![(
+            String::from("/"),
+            store
+                .properties()
+                .ipm_sub_tree_entry_id()
+                .unwrap()
+                .node_id(),
+        )];
         while let Some((name, node)) = stack.pop() {
-            let folder = store.open_folder(&store.properties().make_entry_id(node).unwrap()).unwrap();
-            let Some(table) = folder.hierarchy_table() else { continue };
+            let folder = store
+                .open_folder(&store.properties().make_entry_id(node).unwrap())
+                .unwrap();
+            let Some(table) = folder.hierarchy_table() else {
+                continue;
+            };
             out.push((name.clone(), unreferenced_heap_allocations(table.as_ref())));
             for row in table.rows_matrix() {
                 let child = NodeId::from(u32::from(row.id()));
-                let child_name = store.open_folder(&store.properties().make_entry_id(child).unwrap()).unwrap().properties().display_name().unwrap().to_string();
+                let child_name = store
+                    .open_folder(&store.properties().make_entry_id(child).unwrap())
+                    .unwrap()
+                    .properties()
+                    .display_name()
+                    .unwrap()
+                    .to_string();
                 stack.push((format!("{name}{child_name}/"), child));
             }
         }
@@ -2390,29 +3245,50 @@ mod tests {
         // turns the path edits off): a rebuild must not keep the old TCINFO, row index, in-heap row matrix or the
         // updated row's old values.
         for force in [false, true] {
-            let path = temp(if force { "garbage-rebuild" } else { "garbage-paths" });
-            drop(UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap());
+            let path = temp(if force {
+                "garbage-rebuild"
+            } else {
+                "garbage-paths"
+            });
+            drop(
+                UnicodePstFile::create(&path, &message("first", "<first@example.com>", true))
+                    .unwrap(),
+            );
             FORCE_TABLE_REBUILD.with(|cell| cell.set(force));
-            let ids: Vec<String> = (0..80).map(|index| format!("<g{index}@example.com>")).collect();
+            let ids: Vec<String> = (0..80)
+                .map(|index| format!("<g{index}@example.com>"))
+                .collect();
             let targets: Vec<Vec<String>> = (0..80)
                 .map(|index| match index % 4 {
                     0 => vec!["Inbox".into(), format!("F{}", index % 24)],
                     1 => vec!["Deleted Items".into()],
-                    2 => vec!["Deleted Items".into(), "Sub".into(), format!("D{}", index % 3)],
+                    2 => vec![
+                        "Deleted Items".into(),
+                        "Sub".into(),
+                        format!("D{}", index % 3),
+                    ],
                     _ => vec!["Inbox".into(), format!("F{}", index % 24), "Inner".into()],
                 })
                 .collect();
             let mut writer = UnicodePstWriter::open(&path).unwrap();
             for (index, target) in targets.iter().enumerate() {
                 let target: Vec<&str> = target.iter().map(String::as_str).collect();
-                let batch = [UnicodePstBatchMessage { message: message("garbage", &ids[index], index % 2 == 0), attachments: &[] }];
-                writer.append_many_in_folder_with_attachments(&target, &batch).unwrap();
+                let batch = [UnicodePstBatchMessage {
+                    message: message("garbage", &ids[index], index % 2 == 0),
+                    attachments: &[],
+                }];
+                writer
+                    .append_many_in_folder_with_attachments(&target, &batch)
+                    .unwrap();
             }
             writer.close().unwrap();
             FORCE_TABLE_REBUILD.with(|cell| cell.set(false));
             let garbage = hierarchy_garbage(&path);
             assert!(garbage.len() >= 20, "{garbage:?}");
-            assert!(garbage.iter().all(|(_, count)| *count == 0), "force {force}: {garbage:?}");
+            assert!(
+                garbage.iter().all(|(_, count)| *count == 0),
+                "force {force}: {garbage:?}"
+            );
             std::fs::remove_file(path).unwrap();
         }
     }
@@ -2424,28 +3300,57 @@ mod tests {
         // independent reader takes for a freed item, dropping the whole folder).
         let path = temp("empty-string");
         let mut first = message("", "<empty@example.com>", true);
-        first.sender = first.sender.map(|sender| UnicodePstSender { name: "", ..sender });
+        first.sender = first
+            .sender
+            .map(|sender| UnicodePstSender { name: "", ..sender });
         drop(UnicodePstFile::create(&path, &first).unwrap());
         let mut writer = UnicodePstWriter::open(&path).unwrap();
-        let batch = [UnicodePstBatchMessage { message: message("named", "<named@example.com>", true), attachments: &[] }];
-        writer.append_many_in_folder_with_attachments(&["Inbox"], &batch).unwrap();
+        let batch = [UnicodePstBatchMessage {
+            message: message("named", "<named@example.com>", true),
+            attachments: &[],
+        }];
+        writer
+            .append_many_in_folder_with_attachments(&["Inbox"], &batch)
+            .unwrap();
         writer.close().unwrap();
         let mut core = WriterCore::open(&path).unwrap();
         let inbox = ensure_unicode_folder_path(&mut core, &["Inbox"]).unwrap();
         let store = core.store().unwrap();
-        let table = store.open_folder(&store.properties().make_entry_id(inbox).unwrap()).unwrap().contents_table().cloned().unwrap();
+        let table = store
+            .open_folder(&store.properties().make_entry_id(inbox).unwrap())
+            .unwrap()
+            .contents_table()
+            .cloned()
+            .unwrap();
         let context = table.context();
-        let subject = context.columns().iter().position(|column| column.prop_id() == 0x0037).unwrap();
-        let cells: Vec<_> = table.rows_matrix().map(|row| row.columns(context).unwrap()[subject].clone()).collect();
+        let subject = context
+            .columns()
+            .iter()
+            .position(|column| column.prop_id() == 0x0037)
+            .unwrap();
+        let cells: Vec<_> = table
+            .rows_matrix()
+            .map(|row| row.columns(context).unwrap()[subject].clone())
+            .collect();
         assert_eq!(cells.len(), 2);
         match &cells[0] {
-            Some(TableRowColumnValue::Heap(id)) => assert_eq!(u32::from(*id), 0, "an empty subject cell is HNID 0"),
+            Some(TableRowColumnValue::Heap(id)) => {
+                assert_eq!(u32::from(*id), 0, "an empty subject cell is HNID 0")
+            }
             other => panic!("empty subject cell {other:?}"),
         }
         match &cells[1] {
             Some(value @ TableRowColumnValue::Heap(id)) if u32::from(*id) != 0 => {
-                let PropertyValue::Unicode(text) = table.read_column(value, PropertyType::Unicode).unwrap() else { panic!("subject type") };
-                assert_eq!(text.buffer(), "named".encode_utf16().collect::<Vec<_>>().as_slice(), "no terminator");
+                let PropertyValue::Unicode(text) =
+                    table.read_column(value, PropertyType::Unicode).unwrap()
+                else {
+                    panic!("subject type")
+                };
+                assert_eq!(
+                    text.buffer(),
+                    "named".encode_utf16().collect::<Vec<_>>().as_slice(),
+                    "no terminator"
+                );
             }
             other => panic!("subject cell {other:?}"),
         }
@@ -2455,7 +3360,9 @@ mod tests {
             for value in row.columns(context).unwrap().into_iter().flatten() {
                 if let TableRowColumnValue::Heap(id) = value {
                     if u32::from(id) != 0 {
-                        assert!(!pages[usize::from(id.block_index())][usize::from(id.index().unwrap()) + 1].is_empty());
+                        assert!(!pages[usize::from(id.block_index())]
+                            [usize::from(id.index().unwrap()) + 1]
+                            .is_empty());
                     }
                 }
             }
@@ -2470,22 +3377,48 @@ mod tests {
         // read it as PtypNull in a property context or fail on it in a table cell (InvalidHeapIndex(0)).
         use crate::messaging::message::{Message as _, UnicodeMessage};
         let path = temp("empty-read");
-        drop(UnicodePstFile::create(&path, &message("", "<empty-read@example.com>", true)).unwrap());
+        drop(
+            UnicodePstFile::create(&path, &message("", "<empty-read@example.com>", true)).unwrap(),
+        );
         let mut core = WriterCore::open(&path).unwrap();
         let inbox = ensure_unicode_folder_path(&mut core, &["Inbox"]).unwrap();
         let store = core.store().unwrap();
-        let table = store.open_folder(&store.properties().make_entry_id(inbox).unwrap()).unwrap().contents_table().cloned().unwrap();
+        let table = store
+            .open_folder(&store.properties().make_entry_id(inbox).unwrap())
+            .unwrap()
+            .contents_table()
+            .cloned()
+            .unwrap();
         let context = table.context();
-        let subject = context.columns().iter().position(|column| column.prop_id() == 0x0037).unwrap();
+        let subject = context
+            .columns()
+            .iter()
+            .position(|column| column.prop_id() == 0x0037)
+            .unwrap();
         let row = table.rows_matrix().next().unwrap();
         let cell = row.columns(context).unwrap()[subject].clone().unwrap();
-        assert!(matches!(cell, TableRowColumnValue::Heap(id) if u32::from(id) == 0), "the empty subject cell is HNID 0");
-        let PropertyValue::Unicode(text) = table.read_column(&cell, PropertyType::Unicode).unwrap() else { panic!("cell type") };
+        assert!(
+            matches!(cell, TableRowColumnValue::Heap(id) if u32::from(id) == 0),
+            "the empty subject cell is HNID 0"
+        );
+        let PropertyValue::Unicode(text) = table.read_column(&cell, PropertyType::Unicode).unwrap()
+        else {
+            panic!("cell type")
+        };
         assert!(text.buffer().is_empty());
-        let entry_id = store.properties().make_entry_id(NodeId::from(u32::from(row.id()))).unwrap();
+        let entry_id = store
+            .properties()
+            .make_entry_id(NodeId::from(u32::from(row.id())))
+            .unwrap();
         let message = UnicodeMessage::read(store.clone(), &entry_id, None).unwrap();
-        let value = message.properties().iter().find(|(id, _)| **id == 0x0037).map(|(_, value)| value.clone());
-        let Some(PropertyValue::Unicode(text)) = value else { panic!("subject in the message: {value:?}") };
+        let value = message
+            .properties()
+            .iter()
+            .find(|(id, _)| **id == 0x0037)
+            .map(|(_, value)| value.clone());
+        let Some(PropertyValue::Unicode(text)) = value else {
+            panic!("subject in the message: {value:?}")
+        };
         assert!(text.buffer().is_empty());
         std::fs::remove_file(path).unwrap();
     }
@@ -2496,9 +3429,15 @@ mod tests {
         // attachment object exceeds that, or whose attachments each fit but together exceed PidTagMessageSize (found by
         // the check before the commit), is refused with a typed FileTooLarge error naming its position, before its
         // streams are opened and before any block of the commit is written; the file keeps its last commit.
-        for (case, lens) in [("attachment", &[i32::MAX as u64][..]), ("message", &[1_100_000_000, 1_100_000_000][..])] {
+        for (case, lens) in [
+            ("attachment", &[i32::MAX as u64][..]),
+            ("message", &[1_100_000_000, 1_100_000_000][..]),
+        ] {
             let path = temp("too-large");
-            drop(UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap());
+            drop(
+                UnicodePstFile::create(&path, &message("first", "<first@example.com>", true))
+                    .unwrap(),
+            );
             let before = std::fs::read(&path).unwrap();
             let opened = std::cell::Cell::new(false);
             let open = || -> io::Result<Box<dyn Read>> {
@@ -2512,24 +3451,45 @@ mod tests {
                     mime_type: "application/octet-stream",
                     content_id: None,
                     data: &[],
-                    stream: Some(UnicodePstAttachmentStream { len: *len, open: &open }),
+                    stream: Some(UnicodePstAttachmentStream {
+                        len: *len,
+                        open: &open,
+                    }),
                     hidden: false,
                     attached_message: None,
                 })
                 .collect::<Vec<_>>();
             let mut writer = UnicodePstWriter::open(&path).unwrap();
             let batch = [
-                UnicodePstBatchMessage { message: message("fits", "<fits@example.com>", true), attachments: &[] },
-                UnicodePstBatchMessage { message: message("huge", "<huge@example.com>", true), attachments: &huge },
+                UnicodePstBatchMessage {
+                    message: message("fits", "<fits@example.com>", true),
+                    attachments: &[],
+                },
+                UnicodePstBatchMessage {
+                    message: message("huge", "<huge@example.com>", true),
+                    attachments: &huge,
+                },
             ];
-            let error = writer.append_many_in_folder_with_attachments(&["Inbox"], &batch).unwrap_err();
+            let error = writer
+                .append_many_in_folder_with_attachments(&["Inbox"], &batch)
+                .unwrap_err();
             assert_eq!(error.kind(), io::ErrorKind::FileTooLarge, "{case}");
-            let too_large = error.get_ref().and_then(|inner| inner.downcast_ref::<UnicodePstMessageTooLarge>()).expect("typed error");
-            assert_eq!(too_large.position, 2, "{case}: the second message of the call");
+            let too_large = error
+                .get_ref()
+                .and_then(|inner| inner.downcast_ref::<UnicodePstMessageTooLarge>())
+                .expect("typed error");
+            assert_eq!(
+                too_large.position, 2,
+                "{case}: the second message of the call"
+            );
             assert!(too_large.size > i32::MAX as u64, "{case}");
             assert!(!opened.get(), "{case}: a stream was opened");
             drop(writer);
-            assert_eq!(std::fs::read(&path).unwrap(), before, "{case}: the file changed");
+            assert_eq!(
+                std::fs::read(&path).unwrap(),
+                before,
+                "{case}: the file changed"
+            );
             std::fs::remove_file(path).unwrap();
         }
     }
@@ -2545,10 +3505,15 @@ mod tests {
         // and neither makes one over 127 KiB. Copying every block and allocating per page and per range would make them
         // differ by about 15,000 calls (one 8 KiB copy per block) plus five per B-tree page and one per map range. The
         // test build's own record of every appended entry (`appended_log`) is not counted.
-        use crate::measurement::heap::{calls_on_this_thread, huge_calls_on_this_thread, large_calls_on_this_thread};
+        use crate::measurement::heap::{
+            calls_on_this_thread, huge_calls_on_this_thread, large_calls_on_this_thread,
+        };
         let calls = |len: u64| {
             let path = temp("alloc");
-            drop(UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap());
+            drop(
+                UnicodePstFile::create(&path, &message("first", "<first@example.com>", true))
+                    .unwrap(),
+            );
             let open = || -> io::Result<Box<dyn Read>> { Ok(Box::new(io::repeat(7).take(len))) };
             let attachment = UnicodePstAttachment {
                 filename: "stream.bin",
@@ -2560,22 +3525,54 @@ mod tests {
                 attached_message: None,
             };
             let mut writer = UnicodePstWriter::open(&path).unwrap();
-            let batch = [UnicodePstBatchMessage { message: message("big", "<big@example.com>", true), attachments: std::slice::from_ref(&attachment) }];
-            writer.append_many_in_folder_with_attachments(&["Inbox"], &[UnicodePstBatchMessage { message: message("warm", "<warm@example.com>", true), attachments: &[] }]).unwrap();
-            let before = (calls_on_this_thread(), large_calls_on_this_thread(), huge_calls_on_this_thread());
-            writer.append_many_in_folder_with_attachments(&["Inbox"], &batch).unwrap();
+            let batch = [UnicodePstBatchMessage {
+                message: message("big", "<big@example.com>", true),
+                attachments: std::slice::from_ref(&attachment),
+            }];
+            writer
+                .append_many_in_folder_with_attachments(
+                    &["Inbox"],
+                    &[UnicodePstBatchMessage {
+                        message: message("warm", "<warm@example.com>", true),
+                        attachments: &[],
+                    }],
+                )
+                .unwrap();
+            let before = (
+                calls_on_this_thread(),
+                large_calls_on_this_thread(),
+                huge_calls_on_this_thread(),
+            );
+            writer
+                .append_many_in_folder_with_attachments(&["Inbox"], &batch)
+                .unwrap();
             // Up to the commit: the test build's checks after the commit read whole B-trees and are not counted.
             let at_commit = COMMIT_START.with(std::cell::Cell::get);
             writer.close().unwrap();
             std::fs::remove_file(path).unwrap();
-            (at_commit.0 - before.0, at_commit.1 - before.1, at_commit.2 - before.2)
+            (
+                at_commit.0 - before.0,
+                at_commit.1 - before.1,
+                at_commit.2 - before.2,
+            )
         };
         let _ = calls(40 << 20);
         let (small, large) = (calls(8 << 20), calls(128 << 20));
-        println!("allocation calls (all, over 15 KiB, over 127 KiB): 8 MiB {small:?}, 128 MiB {large:?}");
-        assert!(large.0 < small.0 + 100, "128 MiB: {large:?}, 8 MiB: {small:?}");
-        assert!(large.1 <= small.1, "allocations over 15 KiB, 128 MiB: {large:?}, 8 MiB: {small:?}");
-        assert!(small.2 == 0 && large.2 == 0, "allocations over 127 KiB: 8 MiB {small:?}, 128 MiB {large:?}");
+        println!(
+            "allocation calls (all, over 15 KiB, over 127 KiB): 8 MiB {small:?}, 128 MiB {large:?}"
+        );
+        assert!(
+            large.0 < small.0 + 100,
+            "128 MiB: {large:?}, 8 MiB: {small:?}"
+        );
+        assert!(
+            large.1 <= small.1,
+            "allocations over 15 KiB, 128 MiB: {large:?}, 8 MiB: {small:?}"
+        );
+        assert!(
+            small.2 == 0 && large.2 == 0,
+            "allocations over 127 KiB: 8 MiB {small:?}, 128 MiB {large:?}"
+        );
     }
 
     #[test]
@@ -2584,21 +3581,37 @@ mod tests {
         // block leaves of 0 to 20 entries (reference counts of 1 and 2), node leaves of 0 to 15 entries (with and
         // without subnode and parent), and intermediate pages of both trees at levels 1 and 3.
         let path = temp("page-encoder");
-        let mut file = OpenOptions::new().create(true).read(true).write(true).truncate(true).open(&path).unwrap();
+        let mut file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .truncate(true)
+            .open(&path)
+            .unwrap();
         let mut n = 0_u64;
-        let mut check = |file: &mut File, page_type: PageType, data: NewBTreePageData, encoded: &dyn Fn(UnicodePageRef) -> [u8; PAGE_SIZE]| {
-            n += 1;
-            let page_ref = UnicodePageRef::new(UnicodePageId::from(0x2000 + 4 * n), UnicodeByteIndex::new(512 * n));
-            write_btree_page(file, NewBTreePage { page_ref, data }).unwrap();
-            let mut written = [0_u8; PAGE_SIZE];
-            file.seek(SeekFrom::Start(512 * n)).unwrap();
-            file.read_exact(&mut written).unwrap();
-            assert_eq!(written, encoded(page_ref), "page {n} ({page_type:?})");
-        };
+        let mut check =
+            |file: &mut File,
+             page_type: PageType,
+             data: NewBTreePageData,
+             encoded: &dyn Fn(UnicodePageRef) -> [u8; PAGE_SIZE]| {
+                n += 1;
+                let page_ref = UnicodePageRef::new(
+                    UnicodePageId::from(0x2000 + 4 * n),
+                    UnicodeByteIndex::new(512 * n),
+                );
+                write_btree_page(file, NewBTreePage { page_ref, data }).unwrap();
+                let mut written = [0_u8; PAGE_SIZE];
+                file.seek(SeekFrom::Start(512 * n)).unwrap();
+                file.read_exact(&mut written).unwrap();
+                assert_eq!(written, encoded(page_ref), "page {n} ({page_type:?})");
+            };
         let blocks = (0..20_u64)
             .map(|index| {
                 let mut entry = UnicodeBlockBTreeEntry::new(
-                    UnicodeBlockRef::new(UnicodeBlockId::new(index % 3 == 0, 0x100 + index).unwrap(), UnicodeByteIndex::new(0x4400 + 8192 * index)),
+                    UnicodeBlockRef::new(
+                        UnicodeBlockId::new(index % 3 == 0, 0x100 + index).unwrap(),
+                        UnicodeByteIndex::new(0x4400 + 8192 * index),
+                    ),
                     (100 + 37 * index) as u16,
                 );
                 if index % 2 == 0 {
@@ -2609,37 +3622,101 @@ mod tests {
             .collect::<Vec<_>>();
         for count in [0, 1, 7, 19, 20] {
             let items = &blocks[..count];
-            check(&mut file, PageType::BlockBTree, NewBTreePageData::BlockLeaf(items.to_vec()), &|page_ref| {
-                encode_btree_page(count, 20, 24, 0, PageType::BlockBTree, page_ref, |index, slot| <UnicodeBlockBTreeEntry as BTreeEntryReadWrite>::write(&items[index], slot)).unwrap()
-            });
+            check(
+                &mut file,
+                PageType::BlockBTree,
+                NewBTreePageData::BlockLeaf(items.to_vec()),
+                &|page_ref| {
+                    encode_btree_page(
+                        count,
+                        20,
+                        24,
+                        0,
+                        PageType::BlockBTree,
+                        page_ref,
+                        |index, slot| {
+                            <UnicodeBlockBTreeEntry as BTreeEntryReadWrite>::write(
+                                &items[index],
+                                slot,
+                            )
+                        },
+                    )
+                    .unwrap()
+                },
+            );
         }
         let nodes = (0..15_u32)
             .map(|index| {
                 let node = NodeId::new(NodeIdType::NormalMessage, 0x40 + index).unwrap();
                 let data = UnicodeBlockId::new(false, 0x200 + u64::from(index)).unwrap();
-                let sub = (index % 2 == 0).then(|| UnicodeBlockId::new(true, 0x300 + u64::from(index)).unwrap());
-                let parent = (index % 3 != 0).then(|| NodeId::new(NodeIdType::NormalFolder, 0x400 + index).unwrap());
+                let sub = (index % 2 == 0)
+                    .then(|| UnicodeBlockId::new(true, 0x300 + u64::from(index)).unwrap());
+                let parent = (index % 3 != 0)
+                    .then(|| NodeId::new(NodeIdType::NormalFolder, 0x400 + index).unwrap());
                 UnicodeNodeBTreeEntry::new(node, data, sub, parent)
             })
             .collect::<Vec<_>>();
         for count in [0, 1, 14, 15] {
             let items = &nodes[..count];
-            check(&mut file, PageType::NodeBTree, NewBTreePageData::NodeLeaf(items.to_vec()), &|page_ref| {
-                encode_btree_page(count, 15, 32, 0, PageType::NodeBTree, page_ref, |index, slot| <UnicodeNodeBTreeEntry as BTreeEntryReadWrite>::write(&nodes[index], slot)).unwrap()
-            });
+            check(
+                &mut file,
+                PageType::NodeBTree,
+                NewBTreePageData::NodeLeaf(items.to_vec()),
+                &|page_ref| {
+                    encode_btree_page(
+                        count,
+                        15,
+                        32,
+                        0,
+                        PageType::NodeBTree,
+                        page_ref,
+                        |index, slot| {
+                            <UnicodeNodeBTreeEntry as BTreeEntryReadWrite>::write(
+                                &nodes[index],
+                                slot,
+                            )
+                        },
+                    )
+                    .unwrap()
+                },
+            );
         }
         let children = (0..20_u64)
-            .map(|index| (0x1000 + 64 * index, UnicodePageRef::new(UnicodePageId::from(0x8000 + index), UnicodeByteIndex::new(0x10000 + 512 * index))))
+            .map(|index| {
+                (
+                    0x1000 + 64 * index,
+                    UnicodePageRef::new(
+                        UnicodePageId::from(0x8000 + index),
+                        UnicodeByteIndex::new(0x10000 + 512 * index),
+                    ),
+                )
+            })
             .collect::<Vec<_>>();
-        for (page_type, level, count) in [(PageType::BlockBTree, 1, 1), (PageType::BlockBTree, 3, 20), (PageType::NodeBTree, 1, 20), (PageType::NodeBTree, 3, 2)] {
+        for (page_type, level, count) in [
+            (PageType::BlockBTree, 1, 1),
+            (PageType::BlockBTree, 3, 20),
+            (PageType::NodeBTree, 1, 20),
+            (PageType::NodeBTree, 3, 2),
+        ] {
             let items = &children[..count];
-            let entries = items.iter().map(|(key, child)| UnicodeBTreePageEntry::new(*key, *child)).collect();
-            check(&mut file, page_type, NewBTreePageData::Intermediate(page_type, level, entries), &|page_ref| {
-                encode_btree_page(count, 20, 24, level, page_type, page_ref, |index, slot| {
-                    <UnicodeBTreePageEntry as BTreeEntryReadWrite>::write(&UnicodeBTreePageEntry::new(items[index].0, items[index].1), slot)
-                })
-                .unwrap()
-            });
+            let entries = items
+                .iter()
+                .map(|(key, child)| UnicodeBTreePageEntry::new(*key, *child))
+                .collect();
+            check(
+                &mut file,
+                page_type,
+                NewBTreePageData::Intermediate(page_type, level, entries),
+                &|page_ref| {
+                    encode_btree_page(count, 20, 24, level, page_type, page_ref, |index, slot| {
+                        <UnicodeBTreePageEntry as BTreeEntryReadWrite>::write(
+                            &UnicodeBTreePageEntry::new(items[index].0, items[index].1),
+                            slot,
+                        )
+                    })
+                    .unwrap()
+                },
+            );
         }
         drop(file);
         std::fs::remove_file(path).unwrap();
@@ -2651,7 +3728,10 @@ mod tests {
         // refusal of a too-large message before anything is written rests on this bound. Lengths around the heap's
         // allocation limit and page size, one- to four-byte characters, empty values, many recipients and many
         // categories; the tightest margin seen is printed.
-        let lengths = [0_usize, 1, 2, 3, 7, 100, 1_000, 1_789, 1_790, 1_791, 2_000, 2_725, 2_730, 3_580, 4_000, 8_176, 20_000, 600_000];
+        let lengths = [
+            0_usize, 1, 2, 3, 7, 100, 1_000, 1_789, 1_790, 1_791, 2_000, 2_725, 2_730, 3_580,
+            4_000, 8_176, 20_000, 600_000,
+        ];
         let chars = ['a', '\u{e9}', '\u{20ac}', '\u{1f600}'];
         let class_max = format!("IPM.{}", "x".repeat(251));
         let mut seed = 0x2545_F491_4F6C_DD1D_u64;
@@ -2664,26 +3744,45 @@ mod tests {
         let (mut tightest, mut tightest_large) = (f64::INFINITY, f64::INFINITY);
         for case in 0..600 {
             let text = |next: &mut dyn FnMut(usize) -> usize| -> String {
-                let len = if case % 5 == 0 { 1_790 } else { lengths[next(lengths.len())] };
-                std::iter::repeat(chars[next(chars.len())]).take(len).collect()
+                let len = if case % 5 == 0 {
+                    1_790
+                } else {
+                    lengths[next(lengths.len())]
+                };
+                std::iter::repeat(chars[next(chars.len())])
+                    .take(len)
+                    .collect()
             };
-            let [subject, sender_name, sender_email, sender_type, body, id, html, headers] = std::array::from_fn(|_| text(&mut next));
+            let [subject, sender_name, sender_email, sender_type, body, id, html, headers] =
+                std::array::from_fn(|_| text(&mut next));
             let short = |value: String| value.chars().take(32).collect::<String>();
-            let names = (0..[0, 1, 3, 40, 400][next(5)]).map(|_| (short(text(&mut next)), short(text(&mut next)))).collect::<Vec<_>>();
+            let names = (0..[0, 1, 3, 40, 400][next(5)])
+                .map(|_| (short(text(&mut next)), short(text(&mut next))))
+                .collect::<Vec<_>>();
             let recipients = names
                 .iter()
                 .enumerate()
                 .map(|(index, (name, email))| UnicodePstRecipient {
                     name,
                     email,
-                    recipient_type: [UnicodePstRecipientType::To, UnicodePstRecipientType::Cc, UnicodePstRecipientType::Bcc][index % 3],
+                    recipient_type: [
+                        UnicodePstRecipientType::To,
+                        UnicodePstRecipientType::Cc,
+                        UnicodePstRecipientType::Bcc,
+                    ][index % 3],
                     properties: &[],
                 })
                 .collect::<Vec<_>>();
-            let categories = (0..[0, 1, 5, 300, 2_000][next(5)]).map(|_| ["", "c", "category"][next(3)]).collect::<Vec<_>>();
+            let categories = (0..[0, 1, 5, 300, 2_000][next(5)])
+                .map(|_| ["", "c", "category"][next(3)])
+                .collect::<Vec<_>>();
             let search_key = vec![1_u8; lengths[next(lengths.len())]];
             let mut input = message(&subject, &id, case % 2 == 0);
-            input.sender = Some(UnicodePstSender { name: &sender_name, email: &sender_email, address_type: &sender_type });
+            input.sender = Some(UnicodePstSender {
+                name: &sender_name,
+                email: &sender_email,
+                address_type: &sender_type,
+            });
             // An absent sender, Message-ID or delivery time, and a message class up to its 255-character limit.
             if case % 7 == 3 {
                 input.sender = None;
@@ -2702,8 +3801,13 @@ mod tests {
             input.recipients = &recipients;
             input.categories = &categories;
             input.transport_headers = (case % 5 != 1).then_some(headers.as_str());
-            let (pages, external) = message_data(&input, &[], &crate::NameIds::with_keywords(0x8001)).unwrap();
-            let exact = pages.iter().chain(external.iter().map(|(_, data)| data)).map(Vec::len).sum::<usize>() as u64;
+            let (pages, external) =
+                message_data(&input, &[], &crate::NameIds::with_keywords(0x8001)).unwrap();
+            let exact = pages
+                .iter()
+                .chain(external.iter().map(|(_, data)| data))
+                .map(Vec::len)
+                .sum::<usize>() as u64;
             let bound = message_data_bound(&input);
             assert!(exact <= bound, "case {case}: exact {exact} > bound {bound}");
             tightest = tightest.min(bound as f64 / exact as f64);
@@ -2715,41 +3819,104 @@ mod tests {
 
         // One value far above the 1 MiB margin per term of the bound, so that a bound without any one term fails.
         let huge = "x".repeat(2 << 20);
-        let names = (0..30_000).map(|index| format!("{index:064}")).collect::<Vec<_>>();
+        let names = (0..30_000)
+            .map(|index| format!("{index:064}"))
+            .collect::<Vec<_>>();
         let recipients = names
             .iter()
             .enumerate()
             .map(|(index, name)| UnicodePstRecipient {
                 name,
                 email: "",
-                recipient_type: [UnicodePstRecipientType::To, UnicodePstRecipientType::Cc, UnicodePstRecipientType::Bcc][index % 3],
+                recipient_type: [
+                    UnicodePstRecipientType::To,
+                    UnicodePstRecipientType::Cc,
+                    UnicodePstRecipientType::Bcc,
+                ][index % 3],
                 properties: &[],
             })
             .collect::<Vec<_>>();
         let categories = vec!["category"; 100_000];
         // Given properties: one far above the margin with about 32,000 small ones, and about 32,000 of 64 bytes (each
         // with its BTH record).
-        let mut given = vec![UnicodePstProperty { id: 0x1001, value: UnicodePstValue::Unicode(&huge) }];
+        let mut given = vec![UnicodePstProperty {
+            id: 0x1001,
+            value: UnicodePstValue::Unicode(&huge),
+        }];
         let free = |id: &u16| *id != 0x1001 && !crate::MESSAGE_OWNED_IDS.contains(id);
-        given.extend((0x0100_u16..0x7F00).filter(free).map(|id| UnicodePstProperty { id, value: UnicodePstValue::Integer32(i32::from(id)) }));
-        let many_small = (0x0100_u16..0x7F00).filter(free).map(|id| UnicodePstProperty { id, value: UnicodePstValue::Binary(&[7; 64]) }).collect::<Vec<_>>();
+        given.extend(
+            (0x0100_u16..0x7F00)
+                .filter(free)
+                .map(|id| UnicodePstProperty {
+                    id,
+                    value: UnicodePstValue::Integer32(i32::from(id)),
+                }),
+        );
+        let many_small = (0x0100_u16..0x7F00)
+            .filter(free)
+            .map(|id| UnicodePstProperty {
+                id,
+                value: UnicodePstValue::Binary(&[7; 64]),
+            })
+            .collect::<Vec<_>>();
         // Named properties, the same way: one far above the margin with about 30,000 small ones, and about 30,000 of 64
         // bytes.
-        let set = crate::guid_bytes(0x1111_2222, 0x3333, 0x4444, [0x55, 0x55, 0x66, 0x66, 0x77, 0x77, 0x88, 0x88]);
-        let named_one = |lid: u32, value| crate::UnicodePstNamedProperty { set, name: crate::UnicodePstPropertyName::Lid(lid), value };
+        let set = crate::guid_bytes(
+            0x1111_2222,
+            0x3333,
+            0x4444,
+            [0x55, 0x55, 0x66, 0x66, 0x77, 0x77, 0x88, 0x88],
+        );
+        let named_one = |lid: u32, value| crate::UnicodePstNamedProperty {
+            set,
+            name: crate::UnicodePstPropertyName::Lid(lid),
+            value,
+        };
         let mut named = vec![named_one(0, UnicodePstValue::Unicode(&huge))];
         named.extend((1..30_000).map(|lid| named_one(lid, UnicodePstValue::Integer32(lid as i32))));
-        let many_small_named = (0..30_000).map(|lid| named_one(lid, UnicodePstValue::Binary(&[7; 64]))).collect::<Vec<_>>();
-        let terms = ["subject", "sender name", "sender address type", "sender email", "body", "message id", "search key", "html", "transport headers", "recipients", "categories",
-                     "properties", "many small properties", "named properties", "many small named properties"];
+        let many_small_named = (0..30_000)
+            .map(|lid| named_one(lid, UnicodePstValue::Binary(&[7; 64])))
+            .collect::<Vec<_>>();
+        let terms = [
+            "subject",
+            "sender name",
+            "sender address type",
+            "sender email",
+            "body",
+            "message id",
+            "search key",
+            "html",
+            "transport headers",
+            "recipients",
+            "categories",
+            "properties",
+            "many small properties",
+            "named properties",
+            "many small named properties",
+        ];
         for term in terms {
             let mut input = message("s", "<id@example.com>", true);
             input.recipients = &[];
             match term {
                 "subject" => input.subject = &huge,
-                "sender name" => input.sender = input.sender.map(|sender| UnicodePstSender { name: &huge, ..sender }),
-                "sender address type" => input.sender = input.sender.map(|sender| UnicodePstSender { address_type: &huge, ..sender }),
-                "sender email" => input.sender = input.sender.map(|sender| UnicodePstSender { email: &huge, ..sender }),
+                "sender name" => {
+                    input.sender = input.sender.map(|sender| UnicodePstSender {
+                        name: &huge,
+                        ..sender
+                    })
+                }
+                "sender address type" => {
+                    input.sender = input.sender.map(|sender| UnicodePstSender {
+                        address_type: &huge,
+                        ..sender
+                    })
+                }
+                "sender email" => {
+                    input.sender = input.sender.map(|sender| UnicodePstSender {
+                        email: &huge,
+                        ..sender
+                    })
+                }
                 "body" => input.body = &huge,
                 "message id" => input.message_id = Some(&huge),
                 "search key" => input.search_key = Some(huge.as_bytes()),
@@ -2762,8 +3929,17 @@ mod tests {
                 "many small named properties" => input.named_properties = &many_small_named,
                 _ => input.categories = &categories,
             }
-            let (pages, external) = message_data(&input, &[], &crate::NameIds::with_names(0x8001, input.named_properties)).unwrap();
-            let exact = pages.iter().chain(external.iter().map(|(_, data)| data)).map(Vec::len).sum::<usize>() as u64;
+            let (pages, external) = message_data(
+                &input,
+                &[],
+                &crate::NameIds::with_names(0x8001, input.named_properties),
+            )
+            .unwrap();
+            let exact = pages
+                .iter()
+                .chain(external.iter().map(|(_, data)| data))
+                .map(Vec::len)
+                .sum::<usize>() as u64;
             let bound = message_data_bound(&input);
             // Without this term the bound is 1 MiB plus a few hundred bytes, below 1.5 MiB.
             assert!(exact > 3 << 19, "{term}: {exact} is not above the margin");
@@ -2779,8 +3955,22 @@ mod tests {
             let properties = |size: i32| {
                 (0..count)
                     .map(|index| 0x0E00 + index)
-                    .map(|id| (id, if id == 0x0E08 { PropertyValue::Integer32(size) } else { PropertyValue::Integer32(i32::from(id)) }))
-                    .chain([(0x0037, PropertyValue::Unicode(UnicodeValue::new("subject".encode_utf16().collect())))])
+                    .map(|id| {
+                        (
+                            id,
+                            if id == 0x0E08 {
+                                PropertyValue::Integer32(size)
+                            } else {
+                                PropertyValue::Integer32(i32::from(id))
+                            },
+                        )
+                    })
+                    .chain([(
+                        0x0037,
+                        PropertyValue::Unicode(UnicodeValue::new(
+                            "subject".encode_utf16().collect(),
+                        )),
+                    )])
                     .collect::<Vec<_>>()
             };
             let (expected, _) = property_context_pages(properties(0x1234_5678), 0x80).unwrap();
@@ -2788,8 +3978,14 @@ mod tests {
             assert_ne!(pages, expected);
             set_inline_property(&mut pages, 0x0E08, 0x0003, 0x1234_5678).unwrap();
             assert_eq!(pages, expected, "{count} properties");
-            assert!(set_inline_property(&mut pages, 0x0D00, 0x0003, 1).is_err(), "a missing property");
-            assert!(set_inline_property(&mut pages, 0x0037, 0x0003, 1).is_err(), "another type");
+            assert!(
+                set_inline_property(&mut pages, 0x0D00, 0x0003, 1).is_err(),
+                "a missing property"
+            );
+            assert!(
+                set_inline_property(&mut pages, 0x0037, 0x0003, 1).is_err(),
+                "another type"
+            );
         }
     }
 
@@ -2809,14 +4005,25 @@ mod tests {
                 hidden: false,
                 attached_message: None,
             };
-            prepare_message(&input, std::slice::from_ref(&attachment), 7, &crate::NameIds::default())
+            prepare_message(
+                &input,
+                std::slice::from_ref(&attachment),
+                7,
+                &crate::NameIds::default(),
+            )
         };
         let fits = i32::MAX as u64 - 600_000;
         prepared(fits).unwrap();
-        assert!(fits + message_data_bound(&input) > i32::MAX as u64 + 6, "the bound passes the limit");
+        assert!(
+            fits + message_data_bound(&input) > i32::MAX as u64 + 6,
+            "the bound passes the limit"
+        );
         let error = prepared(i32::MAX as u64 - 1_000).err().unwrap();
         assert_eq!(error.kind(), io::ErrorKind::FileTooLarge);
-        assert!(error.get_ref().and_then(|inner| inner.downcast_ref::<UnicodePstMessageTooLarge>()).is_some());
+        assert!(error
+            .get_ref()
+            .and_then(|inner| inner.downcast_ref::<UnicodePstMessageTooLarge>())
+            .is_some());
     }
 
     #[test]
@@ -2838,17 +4045,34 @@ mod tests {
             hidden: false,
             attached_message: None,
         };
-        drop(UnicodePstFile::create_with_attachments(&path, &input, std::slice::from_ref(&attachment)).unwrap());
+        drop(
+            UnicodePstFile::create_with_attachments(
+                &path,
+                &input,
+                std::slice::from_ref(&attachment),
+            )
+            .unwrap(),
+        );
         let mut writer = UnicodePstWriter::open(&path).unwrap();
-        let batch = [UnicodePstBatchMessage { message: message("sub", "<sub@example.com>", true), attachments: &[] }];
-        writer.append_many_in_folder_with_attachments(&["Inbox", "Sub"], &batch).unwrap();
+        let batch = [UnicodePstBatchMessage {
+            message: message("sub", "<sub@example.com>", true),
+            attachments: &[],
+        }];
+        writer
+            .append_many_in_folder_with_attachments(&["Inbox", "Sub"], &batch)
+            .unwrap();
         writer.close().unwrap();
         let mut core = WriterCore::open(&path).unwrap();
         let state = core.state.take().unwrap();
         let bbt = *state.header.root().block_btree();
         let mut seen = 0;
-        let mut stack: Vec<(NodeId, Option<UnicodeBlockId>)> =
-            state.nbt.entries().unwrap().into_iter().map(|entry| (entry.node(), entry.sub_node())).collect();
+        let mut stack: Vec<(NodeId, Option<UnicodeBlockId>)> = state
+            .nbt
+            .entries()
+            .unwrap()
+            .into_iter()
+            .map(|entry| (entry.node(), entry.sub_node()))
+            .collect();
         while let Some((owner, sub)) = stack.pop() {
             for entry in collect_subnode_entries(&mut core.file, bbt, sub).unwrap() {
                 seen += 1;
@@ -2874,22 +4098,49 @@ mod tests {
         let path = temp("template-row");
         create_template_store(&path).unwrap();
         let hierarchy = HIERARCHY_FALLBACKS.with(std::cell::Cell::get);
-        let ids: Vec<String> = (0..6).map(|index| format!("<t{index}@example.com>")).collect();
+        let ids: Vec<String> = (0..6)
+            .map(|index| format!("<t{index}@example.com>"))
+            .collect();
         let row_of_deleted = |path: &Path| {
             let mut core = WriterCore::open(path).unwrap();
             let deleted = ensure_unicode_folder_path(&mut core, &["Deleted Items"]).unwrap();
             let store = core.store().unwrap();
-            let ipm = store.properties().ipm_sub_tree_entry_id().unwrap().node_id();
-            let table = store.open_folder(&store.properties().make_entry_id(ipm).unwrap()).unwrap().hierarchy_table().cloned().unwrap();
+            let ipm = store
+                .properties()
+                .ipm_sub_tree_entry_id()
+                .unwrap()
+                .node_id();
+            let table = store
+                .open_folder(&store.properties().make_entry_id(ipm).unwrap())
+                .unwrap()
+                .hierarchy_table()
+                .cloned()
+                .unwrap();
             let context = table.context();
-            assert!(context.rows().is_some_and(|rows| matches!(rows.id_type(), Ok(NodeIdType::HeapNode))), "the rows left the heap");
-            let row = table.rows_matrix().find(|row| u32::from(row.id()) == u32::from(deleted)).unwrap();
+            assert!(
+                context
+                    .rows()
+                    .is_some_and(|rows| matches!(rows.id_type(), Ok(NodeIdType::HeapNode))),
+                "the rows left the heap"
+            );
+            let row = table
+                .rows_matrix()
+                .find(|row| u32::from(row.id()) == u32::from(deleted))
+                .unwrap();
             let values = row.columns(context).unwrap();
             let cell = |id: u16| {
-                let at = context.columns().iter().position(|column| column.prop_id() == id).unwrap();
+                let at = context
+                    .columns()
+                    .iter()
+                    .position(|column| column.prop_id() == id)
+                    .unwrap();
                 match &values[at] {
-                    Some(TableRowColumnValue::Small(PropertyValue::Integer32(value))) => i64::from(*value),
-                    Some(TableRowColumnValue::Small(PropertyValue::Boolean(value))) => i64::from(*value),
+                    Some(TableRowColumnValue::Small(PropertyValue::Integer32(value))) => {
+                        i64::from(*value)
+                    }
+                    Some(TableRowColumnValue::Small(PropertyValue::Boolean(value))) => {
+                        i64::from(*value)
+                    }
                     other => panic!("cell {id:#06x}: {other:?}"),
                 }
             };
@@ -2898,9 +4149,18 @@ mod tests {
         let mut writer = UnicodePstWriter::open(&path).unwrap();
         let mut expected = (0, 0, 0);
         for (index, id) in ids.iter().enumerate() {
-            let target: &[&str] = if index == 3 { &["Deleted Items", "Sub"] } else { &["Deleted Items"] };
-            let batch = [UnicodePstBatchMessage { message: message("template row", id, index % 2 == 0), attachments: &[] }];
-            writer.append_many_in_folder_with_attachments(target, &batch).unwrap();
+            let target: &[&str] = if index == 3 {
+                &["Deleted Items", "Sub"]
+            } else {
+                &["Deleted Items"]
+            };
+            let batch = [UnicodePstBatchMessage {
+                message: message("template row", id, index % 2 == 0),
+                attachments: &[],
+            }];
+            writer
+                .append_many_in_folder_with_attachments(target, &batch)
+                .unwrap();
             if index == 3 {
                 expected.2 = 1;
             } else {
@@ -2909,10 +4169,17 @@ mod tests {
             }
             assert_eq!(row_of_deleted(&path), expected, "after commit {index}");
             let (count, unread) = folder(&path, &["Deleted Items"]);
-            assert_eq!((i64::from(count), i64::from(unread)), (expected.0, expected.1));
+            assert_eq!(
+                (i64::from(count), i64::from(unread)),
+                (expected.0, expected.1)
+            );
         }
         writer.close().unwrap();
-        assert_eq!(HIERARCHY_FALLBACKS.with(std::cell::Cell::get), hierarchy, "a hierarchy-table change fell back to the full read and rebuild");
+        assert_eq!(
+            HIERARCHY_FALLBACKS.with(std::cell::Cell::get),
+            hierarchy,
+            "a hierarchy-table change fell back to the full read and rebuild"
+        );
         std::fs::remove_file(path).unwrap();
     }
 
@@ -2924,11 +4191,15 @@ mod tests {
         // paths: no commit falls back to reading and rebuilding a table, and none to the full reference recount. After
         // every folder creation the test build checks the session's hierarchy state against a fresh load from disk.
         let path = temp("siblings");
-        drop(UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap());
+        drop(
+            UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap(),
+        );
         let refcounts = REFCOUNT_FALLBACKS.with(std::cell::Cell::get);
         let hierarchy = HIERARCHY_FALLBACKS.with(std::cell::Cell::get);
         let names: Vec<String> = (0..460).map(|index| format!("S{index:04}")).collect();
-        let ids: Vec<String> = (0..200).map(|index| format!("<s{index}@example.com>")).collect();
+        let ids: Vec<String> = (0..200)
+            .map(|index| format!("<s{index}@example.com>"))
+            .collect();
         let mut next = 0;
         let mut template = [(0_i32, 0_i32); 2];
         let mut writer = UnicodePstWriter::open(&path).unwrap();
@@ -2937,13 +4208,26 @@ mod tests {
                 ensure_unicode_folder_path(&mut writer.core, &["Inbox", name]).unwrap();
                 continue;
             }
-            let batch = [UnicodePstBatchMessage { message: message("sibling", &ids[next], index % 20 == 0), attachments: &[] }];
-            writer.append_many_in_folder_with_attachments(&["Inbox", name], &batch).unwrap();
+            let batch = [UnicodePstBatchMessage {
+                message: message("sibling", &ids[next], index % 20 == 0),
+                attachments: &[],
+            }];
+            writer
+                .append_many_in_folder_with_attachments(&["Inbox", name], &batch)
+                .unwrap();
             next += 1;
             if index % 100 == 0 {
-                for (slot, target) in [&["Deleted Items"][..], &["Deleted Items", "Sub"][..]].into_iter().enumerate() {
-                    let batch = [UnicodePstBatchMessage { message: message("template", &ids[next], false), attachments: &[] }];
-                    writer.append_many_in_folder_with_attachments(target, &batch).unwrap();
+                for (slot, target) in [&["Deleted Items"][..], &["Deleted Items", "Sub"][..]]
+                    .into_iter()
+                    .enumerate()
+                {
+                    let batch = [UnicodePstBatchMessage {
+                        message: message("template", &ids[next], false),
+                        attachments: &[],
+                    }];
+                    writer
+                        .append_many_in_folder_with_attachments(target, &batch)
+                        .unwrap();
                     next += 1;
                     template[slot].0 += 1;
                     template[slot].1 += 1;
@@ -2955,8 +4239,16 @@ mod tests {
             }
         }
         writer.close().unwrap();
-        assert_eq!(HIERARCHY_FALLBACKS.with(std::cell::Cell::get), hierarchy, "a hierarchy-table change fell back to the full read and rebuild");
-        assert_eq!(REFCOUNT_FALLBACKS.with(std::cell::Cell::get), refcounts, "a commit fell back to the full reference recount");
+        assert_eq!(
+            HIERARCHY_FALLBACKS.with(std::cell::Cell::get),
+            hierarchy,
+            "a hierarchy-table change fell back to the full read and rebuild"
+        );
+        assert_eq!(
+            REFCOUNT_FALLBACKS.with(std::cell::Cell::get),
+            refcounts,
+            "a commit fell back to the full reference recount"
+        );
         assert_eq!(folder(&path, &["Deleted Items"]), template[0]);
         assert_eq!(folder(&path, &["Deleted Items", "Sub"]), template[1]);
         // The IPM subtree's row of Deleted Items (a template row; its table's rows were in the heap when it was first
@@ -2965,25 +4257,53 @@ mod tests {
             let mut core = WriterCore::open(&path).unwrap();
             let deleted = ensure_unicode_folder_path(&mut core, &["Deleted Items"]).unwrap();
             let store = core.store().unwrap();
-            let ipm = store.properties().ipm_sub_tree_entry_id().unwrap().node_id();
-            let table = store.open_folder(&store.properties().make_entry_id(ipm).unwrap()).unwrap().hierarchy_table().cloned().unwrap();
+            let ipm = store
+                .properties()
+                .ipm_sub_tree_entry_id()
+                .unwrap()
+                .node_id();
+            let table = store
+                .open_folder(&store.properties().make_entry_id(ipm).unwrap())
+                .unwrap()
+                .hierarchy_table()
+                .cloned()
+                .unwrap();
             let context = table.context();
-            let row = table.rows_matrix().find(|row| u32::from(row.id()) == u32::from(deleted)).unwrap();
+            let row = table
+                .rows_matrix()
+                .find(|row| u32::from(row.id()) == u32::from(deleted))
+                .unwrap();
             let values = row.columns(context).unwrap();
             let cell = |id: u16| {
-                let at = context.columns().iter().position(|column| column.prop_id() == id).unwrap();
+                let at = context
+                    .columns()
+                    .iter()
+                    .position(|column| column.prop_id() == id)
+                    .unwrap();
                 match &values[at] {
                     Some(TableRowColumnValue::Small(value)) => value.clone(),
                     other => panic!("cell {id:#06x}: {other:?}"),
                 }
             };
-            assert!(matches!(cell(0x3602), PropertyValue::Integer32(count) if count == template[0].0));
-            assert!(matches!(cell(0x3603), PropertyValue::Integer32(unread) if unread == template[0].1));
+            assert!(
+                matches!(cell(0x3602), PropertyValue::Integer32(count) if count == template[0].0)
+            );
+            assert!(
+                matches!(cell(0x3603), PropertyValue::Integer32(unread) if unread == template[0].1)
+            );
             assert!(matches!(cell(0x360A), PropertyValue::Boolean(true)));
         }
         for index in [0, 10, 440, 450, 459] {
-            let expected = if index % 10 == 0 { (1, i32::from(index % 20 != 0)) } else { (0, 0) };
-            assert_eq!(folder(&path, &["Inbox", &names[index]]), expected, "folder {index}");
+            let expected = if index % 10 == 0 {
+                (1, i32::from(index % 20 != 0))
+            } else {
+                (0, 0)
+            };
+            assert_eq!(
+                folder(&path, &["Inbox", &names[index]]),
+                expected,
+                "folder {index}"
+            );
         }
 
         // Inbox's hierarchy table holds every folder once, each row with its folder's counters, and its row index has
@@ -2991,9 +4311,20 @@ mod tests {
         let mut core = WriterCore::open(&path).unwrap();
         let inbox = ensure_unicode_folder_path(&mut core, &["Inbox"]).unwrap();
         let store = core.store().unwrap();
-        let table = store.open_folder(&store.properties().make_entry_id(inbox).unwrap()).unwrap().hierarchy_table().cloned().unwrap();
+        let table = store
+            .open_folder(&store.properties().make_entry_id(inbox).unwrap())
+            .unwrap()
+            .hierarchy_table()
+            .cloned()
+            .unwrap();
         let context = table.context();
-        let column = |id: u16| context.columns().iter().position(|column| column.prop_id() == id).unwrap();
+        let column = |id: u16| {
+            context
+                .columns()
+                .iter()
+                .position(|column| column.prop_id() == id)
+                .unwrap()
+        };
         let (count, unread) = (column(0x3602), column(0x3603));
         let rows: Vec<(u32, i32, i32)> = table
             .rows_matrix()
@@ -3008,26 +4339,65 @@ mod tests {
             .collect();
         assert_eq!(rows.len(), 460);
         assert!(rows.iter().enumerate().all(|(index, (_, count, unread))| {
-            (*count, *unread) == if index % 10 == 0 { (1, i32::from(index % 20 != 0)) } else { (0, 0) }
+            (*count, *unread)
+                == if index % 10 == 0 {
+                    (1, i32::from(index % 20 != 0))
+                } else {
+                    (0, 0)
+                }
         }));
         let state = core.state.take().unwrap();
-        let entry = state.nbt.get(node_key(NodeId::new(NodeIdType::HierarchyTable, inbox.index()).unwrap())).unwrap().unwrap();
-        let subnodes = collect_subnode_entries(&mut core.file, *state.header.root().block_btree(), entry.sub_node()).unwrap();
+        let entry = state
+            .nbt
+            .get(node_key(
+                NodeId::new(NodeIdType::HierarchyTable, inbox.index()).unwrap(),
+            ))
+            .unwrap()
+            .unwrap();
+        let subnodes = collect_subnode_entries(
+            &mut core.file,
+            *state.header.root().block_btree(),
+            entry.sub_node(),
+        )
+        .unwrap();
         let tx = Tx::new(&state);
         let mut view = open_table_view(&mut core.file, &tx, entry.data(), |rows| {
-            subnodes.iter().find(|entry| entry.node() == rows).map(|entry| entry.block())
+            subnodes
+                .iter()
+                .find(|entry| entry.node() == rows)
+                .map(|entry| entry.block())
         })
         .unwrap()
         .unwrap();
         let index_hid = view.context.row_index();
-        ensure_heap_page(&mut core.file, &tx, &mut view.heap_tree, &mut view.heap, usize::from(index_hid.block_index())).unwrap();
+        ensure_heap_page(
+            &mut core.file,
+            &tx,
+            &mut view.heap_tree,
+            &mut view.heap,
+            usize::from(index_hid.block_index()),
+        )
+        .unwrap();
         let index = HeapTreeHeader::read(&mut view.heap.get(index_hid).unwrap()).unwrap();
-        assert!(index.levels() >= 1, "the row index has {} levels", index.levels());
-        assert!(assert_fill_levels(&mut core.file, &tx, entry.data()) > 1, "A10: the hierarchy heap's fill levels");
+        assert!(
+            index.levels() >= 1,
+            "the row index has {} levels",
+            index.levels()
+        );
+        assert!(
+            assert_fill_levels(&mut core.file, &tx, entry.data()) > 1,
+            "A10: the hierarchy heap's fill levels"
+        );
         for (position, (id, _, _)) in rows.iter().enumerate() {
-            assert_eq!(find_table_row(&mut core.file, &tx, &mut view, *id).unwrap(), Some(position));
+            assert_eq!(
+                find_table_row(&mut core.file, &tx, &mut view, *id).unwrap(),
+                Some(position)
+            );
         }
-        assert_eq!(find_table_row(&mut core.file, &tx, &mut view, u32::MAX).unwrap(), None);
+        assert_eq!(
+            find_table_row(&mut core.file, &tx, &mut view, u32::MAX).unwrap(),
+            None
+        );
         drop(tx);
         std::fs::remove_file(path).unwrap();
     }
@@ -3038,33 +4408,78 @@ mod tests {
         // have the leaf count of that shape (ceil(24,352 / 8,176) = 3) but not its sizes; only the last leaf's size
         // gives it away. The same leaves with the short one last are taken.
         let path = temp("data-tree-shape");
-        drop(UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap());
+        drop(
+            UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap(),
+        );
         let mut core = WriterCore::open(&path).unwrap();
         let roots = core
             .run(|_file, state, _store| {
                 let header = state.header.clone();
                 let mut tx = Tx::new(state);
-                let mut next_bid = header.next_block().index().max(tx.max_block_index().unwrap_or(0).saturating_add(1));
+                let mut next_bid = header
+                    .next_block()
+                    .index()
+                    .max(tx.max_block_index().unwrap_or(0).saturating_add(1));
                 let mut next_offset = tx.file_space();
                 let mut blocks = Vec::new();
                 let mut roots = Vec::new();
-                for (slot, sizes) in [[MAX_DATA_BLOCK_SIZE, 8000, MAX_DATA_BLOCK_SIZE], [MAX_DATA_BLOCK_SIZE, MAX_DATA_BLOCK_SIZE, 8000]].into_iter().enumerate() {
+                for (slot, sizes) in [
+                    [MAX_DATA_BLOCK_SIZE, 8000, MAX_DATA_BLOCK_SIZE],
+                    [MAX_DATA_BLOCK_SIZE, MAX_DATA_BLOCK_SIZE, 8000],
+                ]
+                .into_iter()
+                .enumerate()
+                {
                     let leaves = sizes
                         .iter()
-                        .map(|size| Ok((push_block(&mut blocks, &mut next_bid, &mut next_offset, false, NewBlockData::Data(vec![0x5A; *size]))?, *size as u32)))
+                        .map(|size| {
+                            Ok((
+                                push_block(
+                                    &mut blocks,
+                                    &mut next_bid,
+                                    &mut next_offset,
+                                    false,
+                                    NewBlockData::Data(vec![0x5A; *size]),
+                                )?,
+                                *size as u32,
+                            ))
+                        })
                         .collect::<io::Result<Vec<_>>>()?;
-                    let root = push_data_tree_leaves(&mut blocks, &mut next_bid, &mut next_offset, leaves)?;
-                    let node = NodeId::new(NodeIdType::ListsTablesProperties, 0x7_F000 + slot as u32)?;
+                    let root = push_data_tree_leaves(
+                        &mut blocks,
+                        &mut next_bid,
+                        &mut next_offset,
+                        leaves,
+                    )?;
+                    let node =
+                        NodeId::new(NodeIdType::ListsTablesProperties, 0x7_F000 + slot as u32)?;
                     tx.put_node(UnicodeNodeBTreeEntry::new(node, root, None, None));
                     roots.push(root);
                 }
-                Ok((CommitPlan { header, changes: tx.changes, blocks, next_bid, next_offset, reserved_nodes: Vec::new() }, roots))
+                Ok((
+                    CommitPlan {
+                        header,
+                        changes: tx.changes,
+                        blocks,
+                        next_bid,
+                        next_offset,
+                        reserved_nodes: Vec::new(),
+                    },
+                    roots,
+                ))
             })
             .unwrap();
         let state = core.state.take().unwrap();
         let tx = Tx::new(&state);
-        assert!(DataTreePath::open(&mut core.file, &tx, roots[0]).unwrap().is_none(), "a short inner leaf");
-        let canonical = DataTreePath::open(&mut core.file, &tx, roots[1]).unwrap().expect("full leaves, a short last one");
+        assert!(
+            DataTreePath::open(&mut core.file, &tx, roots[0])
+                .unwrap()
+                .is_none(),
+            "a short inner leaf"
+        );
+        let canonical = DataTreePath::open(&mut core.file, &tx, roots[1])
+            .unwrap()
+            .expect("full leaves, a short last one");
         assert_eq!((canonical.level, canonical.leaves), (1, 3));
         drop(tx);
         core.state = Some(state);
@@ -3075,12 +4490,26 @@ mod tests {
     /// The children of the search queue's root index block.
     fn queue_index(core: &mut WriterCore) -> Vec<u64> {
         let state = core.state.take().unwrap();
-        let entry = state.nbt.get(node_key(NID_SEARCH_MANAGEMENT_QUEUE)).unwrap().unwrap();
+        let entry = state
+            .nbt
+            .get(node_key(NID_SEARCH_MANAGEMENT_QUEUE))
+            .unwrap()
+            .unwrap();
         let tx = Tx::new(&state);
         let root = bbt_entry(&tx, entry.data()).unwrap();
-        let children = match UnicodeDataTree::read(&mut core.file, state.header.crypt_method(), &root).unwrap() {
+        let children = match UnicodeDataTree::read(
+            &mut core.file,
+            state.header.crypt_method(),
+            &root,
+        )
+        .unwrap()
+        {
             DataTree::Leaf(_) => Vec::new(),
-            DataTree::Intermediate(tree) => tree.entries().iter().map(|entry| entry.block().search_key()).collect(),
+            DataTree::Intermediate(tree) => tree
+                .entries()
+                .iter()
+                .map(|entry| entry.block().search_key())
+                .collect(),
         };
         drop(tx);
         core.state = Some(state);
@@ -3090,10 +4519,16 @@ mod tests {
     /// The search queue's data stream, read through its data tree.
     fn queue_stream(core: &mut WriterCore) -> (u8, Vec<u8>) {
         let state = core.state.take().unwrap();
-        let entry = state.nbt.get(node_key(NID_SEARCH_MANAGEMENT_QUEUE)).unwrap().unwrap();
+        let entry = state
+            .nbt
+            .get(node_key(NID_SEARCH_MANAGEMENT_QUEUE))
+            .unwrap()
+            .unwrap();
         let tx = Tx::new(&state);
         let root = bbt_entry(&tx, entry.data()).unwrap();
-        let level = match UnicodeDataTree::read(&mut core.file, state.header.crypt_method(), &root).unwrap() {
+        let level = match UnicodeDataTree::read(&mut core.file, state.header.crypt_method(), &root)
+            .unwrap()
+        {
             DataTree::Leaf(_) => 0,
             DataTree::Intermediate(tree) => tree.header().level(),
         };
@@ -3112,24 +4547,50 @@ mod tests {
         // last XBLOCK and the XXBLOCK; the stream is the old stream plus the new records, and the reference counts
         // (checked against a full recount after every commit) stay right.
         let path = temp("queue-two-levels");
-        drop(UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap());
+        drop(
+            UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap(),
+        );
         let fallbacks = REFCOUNT_FALLBACKS.with(std::cell::Cell::get);
         let mut core = WriterCore::open(&path).unwrap();
         let (_, before) = queue_stream(&mut core);
         assert_eq!(before.len() % 20, 0);
         // Grow the queue to 1,022 full leaves plus a partial one by repeating its existing records.
-        let records: Vec<u8> = before.chunks(20).cycle().take((1022 * MAX_DATA_BLOCK_SIZE + 4000) / 20).flatten().copied().collect();
+        let records: Vec<u8> = before
+            .chunks(20)
+            .cycle()
+            .take((1022 * MAX_DATA_BLOCK_SIZE + 4000) / 20)
+            .flatten()
+            .copied()
+            .collect();
         core.run(|file, state, _store| {
             let header = state.header.clone();
             let mut tx = Tx::new(state);
             let queue = tx.node(NID_SEARCH_MANAGEMENT_QUEUE)?.unwrap();
-            let mut next_bid = header.next_block().index().max(tx.max_block_index().unwrap_or(0).saturating_add(1));
+            let mut next_bid = header
+                .next_block()
+                .index()
+                .max(tx.max_block_index().unwrap_or(0).saturating_add(1));
             let mut next_offset = tx.file_space();
             let mut blocks = Vec::new();
             let data = push_data_tree(&mut blocks, &mut next_bid, &mut next_offset, &records)?;
-            tx.put_node(UnicodeNodeBTreeEntry::new(NID_SEARCH_MANAGEMENT_QUEUE, data, queue.sub_node(), queue.parent()));
+            tx.put_node(UnicodeNodeBTreeEntry::new(
+                NID_SEARCH_MANAGEMENT_QUEUE,
+                data,
+                queue.sub_node(),
+                queue.parent(),
+            ));
             let _ = file;
-            Ok((CommitPlan { header, changes: tx.changes, blocks, next_bid, next_offset, reserved_nodes: Vec::new() }, ()))
+            Ok((
+                CommitPlan {
+                    header,
+                    changes: tx.changes,
+                    blocks,
+                    next_bid,
+                    next_offset,
+                    reserved_nodes: Vec::new(),
+                },
+                (),
+            ))
         })
         .unwrap();
         let (level, grown) = queue_stream(&mut core);
@@ -3138,25 +4599,50 @@ mod tests {
         let index_before = queue_index(&mut core);
         assert_eq!(index_before.len(), 2);
         let subjects: Vec<String> = (0..30).map(|index| format!("late {index}")).collect();
-        let ids: Vec<String> = (0..30).map(|index| format!("<late{index}@example.com>")).collect();
+        let ids: Vec<String> = (0..30)
+            .map(|index| format!("<late{index}@example.com>"))
+            .collect();
         let mut writer = UnicodePstWriter { core };
         for round in 0..3 {
             let batch: Vec<UnicodePstBatchMessage<'_>> = (round * 10..(round + 1) * 10)
-                .map(|index| UnicodePstBatchMessage { message: message(&subjects[index], &ids[index], false), attachments: &[] })
+                .map(|index| UnicodePstBatchMessage {
+                    message: message(&subjects[index], &ids[index], false),
+                    attachments: &[],
+                })
                 .collect();
-            writer.append_many_in_folder_with_attachments(&["Inbox"], &batch).unwrap();
+            writer
+                .append_many_in_folder_with_attachments(&["Inbox"], &batch)
+                .unwrap();
         }
         let mut core = writer.core;
         let index_after = queue_index(&mut core);
-        assert_eq!(index_after[0], index_before[0], "the full XBLOCK was kept, not rewritten (in-place path)");
-        assert_ne!(index_after.last(), index_before.last(), "the last XBLOCK was replaced");
+        assert_eq!(
+            index_after[0], index_before[0],
+            "the full XBLOCK was kept, not rewritten (in-place path)"
+        );
+        assert_ne!(
+            index_after.last(),
+            index_before.last(),
+            "the last XBLOCK was replaced"
+        );
         let (level, after) = queue_stream(&mut core);
         assert_eq!(level, 2);
-        assert_eq!(&after[..records.len()], &records[..], "the old records are kept as they were");
+        assert_eq!(
+            &after[..records.len()],
+            &records[..],
+            "the old records are kept as they were"
+        );
         // 30 MessageAdded records, plus the folder records of the first append.
-        assert!((after.len() - records.len()) / 20 >= 30, "the new records were appended");
+        assert!(
+            (after.len() - records.len()) / 20 >= 30,
+            "the new records were appended"
+        );
         // Every commit's stated reference changes added up.
-        assert_eq!(REFCOUNT_FALLBACKS.with(std::cell::Cell::get), fallbacks, "a commit fell back to the full reference recount");
+        assert_eq!(
+            REFCOUNT_FALLBACKS.with(std::cell::Cell::get),
+            fallbacks,
+            "a commit fell back to the full reference recount"
+        );
         drop(core);
         std::fs::remove_file(path).unwrap();
     }
@@ -3185,7 +4671,15 @@ mod tests {
         let mut file = File::open(path).unwrap();
         let mut header = vec![0; 564];
         file.read_exact(&mut header).unwrap();
-        let state = CommittedState::read_any(&mut OpenOptions::new().read(true).write(true).open(path).unwrap(), None).unwrap();
+        let state = CommittedState::read_any(
+            &mut OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(path)
+                .unwrap(),
+            None,
+        )
+        .unwrap();
         let mut entries = Vec::new();
         for entry in state.bbt.entries().unwrap().iter() {
             entry.write(&mut entries).unwrap();
@@ -3197,7 +4691,10 @@ mod tests {
     }
 
     fn limit_reached(error: &io::Error) -> Option<crate::UnicodePstFileLimitReached> {
-        error.get_ref().and_then(|inner| inner.downcast_ref::<crate::UnicodePstFileLimitReached>()).copied()
+        error
+            .get_ref()
+            .and_then(|inner| inner.downcast_ref::<crate::UnicodePstFileLimitReached>())
+            .copied()
     }
 
     #[test]
@@ -3208,29 +4705,87 @@ mod tests {
         let path = temp("m33-message-size");
         let body = "line\n".repeat(3000);
         let name = "N".repeat(2000);
-        let recipients = [UnicodePstRecipient { name: &name, email: "long@example.invalid", recipient_type: UnicodePstRecipientType::To, properties: &[] }];
-        let inner = UnicodePstMessage { body: &body, ..message("inner", "<inner@example.com>", true) };
+        let recipients = [UnicodePstRecipient {
+            name: &name,
+            email: "long@example.invalid",
+            recipient_type: UnicodePstRecipientType::To,
+            properties: &[],
+        }];
+        let inner = UnicodePstMessage {
+            body: &body,
+            ..message("inner", "<inner@example.com>", true)
+        };
         let attachments = [
-            UnicodePstAttachment { filename: "a.bin", mime_type: "application/octet-stream", content_id: None, data: &[7; 20_000], stream: None, hidden: false, attached_message: None },
-            UnicodePstAttachment { filename: "Inner", mime_type: "", content_id: None, data: &[], stream: None, hidden: false,
-                attached_message: Some(Box::new(UnicodePstAttachedMessage { message: inner, attachments: vec![] })) },
+            UnicodePstAttachment {
+                filename: "a.bin",
+                mime_type: "application/octet-stream",
+                content_id: None,
+                data: &[7; 20_000],
+                stream: None,
+                hidden: false,
+                attached_message: None,
+            },
+            UnicodePstAttachment {
+                filename: "Inner",
+                mime_type: "",
+                content_id: None,
+                data: &[],
+                stream: None,
+                hidden: false,
+                attached_message: Some(Box::new(UnicodePstAttachedMessage {
+                    message: inner,
+                    attachments: vec![],
+                })),
+            },
         ];
         let mut writer = UnicodePstWriter::create(&path).unwrap();
-        let plain = [UnicodePstBatchMessage { message: message("plain", "<plain@example.com>", true), attachments: &[] }];
-        writer.append_many_in_folder_with_attachments(&["Inbox"], &plain).unwrap();
-        let large = UnicodePstMessage { body: &body, recipients: &recipients, ..message("large", "<large@example.com>", false) };
-        writer.append_many_in_folder_with_attachments(&["Inbox"], &[UnicodePstBatchMessage { message: large, attachments: &attachments }]).unwrap();
+        let plain = [UnicodePstBatchMessage {
+            message: message("plain", "<plain@example.com>", true),
+            attachments: &[],
+        }];
+        writer
+            .append_many_in_folder_with_attachments(&["Inbox"], &plain)
+            .unwrap();
+        let large = UnicodePstMessage {
+            body: &body,
+            recipients: &recipients,
+            ..message("large", "<large@example.com>", false)
+        };
+        writer
+            .append_many_in_folder_with_attachments(
+                &["Inbox"],
+                &[UnicodePstBatchMessage {
+                    message: large,
+                    attachments: &attachments,
+                }],
+            )
+            .unwrap();
         writer.close().unwrap();
 
         let mut core = WriterCore::open(&path).unwrap();
         let folder = ensure_unicode_folder_path(&mut core, &["Inbox"]).unwrap();
         let store = core.store().unwrap();
-        let table = store.open_folder(&store.properties().make_entry_id(folder).unwrap()).unwrap().contents_table().cloned().unwrap();
+        let table = store
+            .open_folder(&store.properties().make_entry_id(folder).unwrap())
+            .unwrap()
+            .contents_table()
+            .cloned()
+            .unwrap();
         let state = core.state.take().unwrap();
         let bbt = *state.header.root().block_btree();
         let tx = Tx::new(&state);
-        fn held(file: &mut File, tx: &Tx<'_>, bbt: UnicodePageRef, data: UnicodeBlockId, sub: Option<UnicodeBlockId>) -> u64 {
-            let mut total = data_tree_leaves(file, tx, data).unwrap().iter().map(|(_, size)| u64::from(*size)).sum::<u64>();
+        fn held(
+            file: &mut File,
+            tx: &Tx<'_>,
+            bbt: UnicodePageRef,
+            data: UnicodeBlockId,
+            sub: Option<UnicodeBlockId>,
+        ) -> u64 {
+            let mut total = data_tree_leaves(file, tx, data)
+                .unwrap()
+                .iter()
+                .map(|(_, size)| u64::from(*size))
+                .sum::<u64>();
             for entry in collect_subnode_entries(file, bbt, sub).unwrap() {
                 total += held(file, tx, bbt, entry.block(), entry.sub_node());
             }
@@ -3239,11 +4794,21 @@ mod tests {
         let mut seen = 0;
         for row in table.rows_matrix() {
             let node = NodeId::from(u32::from(row.id()));
-            let message = UnicodeMessage::read(store.clone(), &store.properties().make_entry_id(node).unwrap(), None).unwrap();
-            let Some(PropertyValue::Integer32(size)) = message.properties().get(0x0E08) else { panic!("no PidTagMessageSize") };
+            let message = UnicodeMessage::read(
+                store.clone(),
+                &store.properties().make_entry_id(node).unwrap(),
+                None,
+            )
+            .unwrap();
+            let Some(PropertyValue::Integer32(size)) = message.properties().get(0x0E08) else {
+                panic!("no PidTagMessageSize")
+            };
             let entry = state.nbt.get(node_key(node)).unwrap().unwrap();
             let stored = held(&mut core.file, &tx, bbt, entry.data(), entry.sub_node());
-            assert_eq!(*size as u64, stored, "{node:?}: PidTagMessageSize against the bytes its node and subnodes hold");
+            assert_eq!(
+                *size as u64, stored,
+                "{node:?}: PidTagMessageSize against the bytes its node and subnodes hold"
+            );
             seen += 1;
         }
         assert_eq!(seen, 2);
@@ -3259,36 +4824,82 @@ mod tests {
         // 400 one-byte attachments (25-byte rows: 327 per block, 1 byte each).
         let path = temp("row-matrix-padding");
         let props = [
-            UnicodePstProperty { id: 0x5FFD, value: UnicodePstValue::Integer32(1) },
-            UnicodePstProperty { id: 0x5FFF, value: UnicodePstValue::Integer32(0) },
+            UnicodePstProperty {
+                id: 0x5FFD,
+                value: UnicodePstValue::Integer32(1),
+            },
+            UnicodePstProperty {
+                id: 0x5FFF,
+                value: UnicodePstValue::Integer32(0),
+            },
         ];
         let names: Vec<String> = (0..200).map(|i| format!("Attendee {i}")).collect();
         let emails: Vec<String> = (0..200).map(|i| format!("a{i}@example.invalid")).collect();
         let recipients: Vec<UnicodePstRecipient<'_>> = (0..200)
-            .map(|i| UnicodePstRecipient { name: &names[i], email: &emails[i], recipient_type: UnicodePstRecipientType::To, properties: &props })
+            .map(|i| UnicodePstRecipient {
+                name: &names[i],
+                email: &emails[i],
+                recipient_type: UnicodePstRecipientType::To,
+                properties: &props,
+            })
             .collect();
         let attachments: Vec<UnicodePstAttachment<'_>> = (0..400)
-            .map(|_| UnicodePstAttachment { filename: "a.bin", mime_type: "application/octet-stream", content_id: None, data: b"x", stream: None, hidden: false, attached_message: None })
+            .map(|_| UnicodePstAttachment {
+                filename: "a.bin",
+                mime_type: "application/octet-stream",
+                content_id: None,
+                data: b"x",
+                stream: None,
+                hidden: false,
+                attached_message: None,
+            })
             .collect();
         let mut writer = UnicodePstWriter::create(&path).unwrap();
-        let rows = UnicodePstMessage { recipients: &recipients, ..message("rows", "<rows@example.com>", true) };
+        let rows = UnicodePstMessage {
+            recipients: &recipients,
+            ..message("rows", "<rows@example.com>", true)
+        };
         writer
-            .append_many_in_folder_with_attachments(&["Inbox"], &[
-                UnicodePstBatchMessage { message: rows, attachments: &[] },
-                UnicodePstBatchMessage { message: message("attachments", "<attachments@example.com>", true), attachments: &attachments },
-            ])
+            .append_many_in_folder_with_attachments(
+                &["Inbox"],
+                &[
+                    UnicodePstBatchMessage {
+                        message: rows,
+                        attachments: &[],
+                    },
+                    UnicodePstBatchMessage {
+                        message: message("attachments", "<attachments@example.com>", true),
+                        attachments: &attachments,
+                    },
+                ],
+            )
             .unwrap();
         writer.close().unwrap();
 
         let mut core = WriterCore::open(&path).unwrap();
         let folder = ensure_unicode_folder_path(&mut core, &["Inbox"]).unwrap();
         let store = core.store().unwrap();
-        let table = store.open_folder(&store.properties().make_entry_id(folder).unwrap()).unwrap().contents_table().cloned().unwrap();
+        let table = store
+            .open_folder(&store.properties().make_entry_id(folder).unwrap())
+            .unwrap()
+            .contents_table()
+            .cloned()
+            .unwrap();
         let state = core.state.take().unwrap();
         let bbt = *state.header.root().block_btree();
         let tx = Tx::new(&state);
-        fn held(file: &mut File, tx: &Tx<'_>, bbt: UnicodePageRef, data: UnicodeBlockId, sub: Option<UnicodeBlockId>) -> u64 {
-            let mut total = data_tree_leaves(file, tx, data).unwrap().iter().map(|(_, size)| u64::from(*size)).sum::<u64>();
+        fn held(
+            file: &mut File,
+            tx: &Tx<'_>,
+            bbt: UnicodePageRef,
+            data: UnicodeBlockId,
+            sub: Option<UnicodeBlockId>,
+        ) -> u64 {
+            let mut total = data_tree_leaves(file, tx, data)
+                .unwrap()
+                .iter()
+                .map(|(_, size)| u64::from(*size))
+                .sum::<u64>();
             for entry in collect_subnode_entries(file, bbt, sub).unwrap() {
                 total += held(file, tx, bbt, entry.block(), entry.sub_node());
             }
@@ -3297,11 +4908,21 @@ mod tests {
         let mut seen = 0;
         for row in table.rows_matrix() {
             let node = NodeId::from(u32::from(row.id()));
-            let message = UnicodeMessage::read(store.clone(), &store.properties().make_entry_id(node).unwrap(), None).unwrap();
-            let Some(PropertyValue::Integer32(size)) = message.properties().get(0x0E08) else { panic!("no PidTagMessageSize") };
+            let message = UnicodeMessage::read(
+                store.clone(),
+                &store.properties().make_entry_id(node).unwrap(),
+                None,
+            )
+            .unwrap();
+            let Some(PropertyValue::Integer32(size)) = message.properties().get(0x0E08) else {
+                panic!("no PidTagMessageSize")
+            };
             let entry = state.nbt.get(node_key(node)).unwrap().unwrap();
             let stored = held(&mut core.file, &tx, bbt, entry.data(), entry.sub_node());
-            assert_eq!(*size as u64, stored, "{node:?}: PidTagMessageSize against the bytes its node and subnodes hold");
+            assert_eq!(
+                *size as u64, stored,
+                "{node:?}: PidTagMessageSize against the bytes its node and subnodes hold"
+            );
             seen += 1;
         }
         assert_eq!(seen, 2);
@@ -3324,8 +4945,16 @@ mod tests {
         let name = "N".repeat(2000);
         let blob = vec![0x5A_u8; 5000];
         let file_name = format!("{}.bin", "n".repeat(1896));
-        let recipients = [UnicodePstRecipient { name: &name, email: "long@example.invalid", recipient_type: UnicodePstRecipientType::To, properties: &[] }];
-        let properties = [UnicodePstProperty { id: 0x0071, value: UnicodePstValue::Binary(&blob) }];
+        let recipients = [UnicodePstRecipient {
+            name: &name,
+            email: "long@example.invalid",
+            recipient_type: UnicodePstRecipientType::To,
+            properties: &[],
+        }];
+        let properties = [UnicodePstProperty {
+            id: 0x0071,
+            value: UnicodePstValue::Binary(&blob),
+        }];
         let attachments = [UnicodePstAttachment {
             filename: &file_name,
             mime_type: "application/octet-stream",
@@ -3336,22 +4965,47 @@ mod tests {
             attached_message: None,
         }];
         let mut writer = UnicodePstWriter::create(&path).unwrap();
-        let first = [UnicodePstBatchMessage { message: message("first", "<first@example.com>", true), attachments: &[] }];
-        writer.append_many_in_folder_with_attachments(&["Inbox"], &first).unwrap();
+        let first = [UnicodePstBatchMessage {
+            message: message("first", "<first@example.com>", true),
+            attachments: &[],
+        }];
+        writer
+            .append_many_in_folder_with_attachments(&["Inbox"], &first)
+            .unwrap();
         let subject = format!("large{}", "S".repeat(2000));
-        let large = UnicodePstMessage { recipients: &recipients, properties: &properties, ..message(&subject, "<large@example.com>", true) };
-        writer.append_many_in_folder_with_attachments(&["Inbox"], &[UnicodePstBatchMessage { message: large, attachments: &attachments }]).unwrap();
+        let large = UnicodePstMessage {
+            recipients: &recipients,
+            properties: &properties,
+            ..message(&subject, "<large@example.com>", true)
+        };
+        writer
+            .append_many_in_folder_with_attachments(
+                &["Inbox"],
+                &[UnicodePstBatchMessage {
+                    message: large,
+                    attachments: &attachments,
+                }],
+            )
+            .unwrap();
         writer.close().unwrap();
 
         let mut core = WriterCore::open(&path).unwrap();
         let folder = ensure_unicode_folder_path(&mut core, &["Inbox"]).unwrap();
         let store = core.store().unwrap();
-        let table = store.open_folder(&store.properties().make_entry_id(folder).unwrap()).unwrap().contents_table().cloned().unwrap();
+        let table = store
+            .open_folder(&store.properties().make_entry_id(folder).unwrap())
+            .unwrap()
+            .contents_table()
+            .cloned()
+            .unwrap();
         let state = core.state.take().unwrap();
         let bbt = *state.header.root().block_btree();
         let tx = Tx::new(&state);
-        let subnodes = |file: &mut File, entry: Option<UnicodeBlockId>| collect_subnode_entries(file, bbt, entry).unwrap();
-        let ref_count = |block: UnicodeBlockId| tx.block(block.search_key()).unwrap().unwrap().ref_count();
+        let subnodes = |file: &mut File, entry: Option<UnicodeBlockId>| {
+            collect_subnode_entries(file, bbt, entry).unwrap()
+        };
+        let ref_count =
+            |block: UnicodeBlockId| tx.block(block.search_key()).unwrap().unwrap().ref_count();
         let large_row = table.rows_matrix().find(|row| {
             let entry_id = store.properties().make_entry_id(NodeId::from(u32::from(row.id()))).unwrap();
             let message = UnicodeMessage::read(store.clone(), &entry_id, None).unwrap();
@@ -3360,38 +5014,99 @@ mod tests {
         let message_node = NodeId::from(u32::from(large_row.id()));
         let message_entry = state.nbt.get(node_key(message_node)).unwrap().unwrap();
         let message_subnodes = subnodes(&mut core.file, message_entry.sub_node());
-        let message_store = UnicodeMessage::read(store.clone(), &store.properties().make_entry_id(message_node).unwrap(), None).unwrap();
-        let contents = state.nbt.get(node_key(NodeId::new(NodeIdType::ContentsTable, folder.index()).unwrap())).unwrap().unwrap();
+        let message_store = UnicodeMessage::read(
+            store.clone(),
+            &store.properties().make_entry_id(message_node).unwrap(),
+            None,
+        )
+        .unwrap();
+        let contents = state
+            .nbt
+            .get(node_key(
+                NodeId::new(NodeIdType::ContentsTable, folder.index()).unwrap(),
+            ))
+            .unwrap()
+            .unwrap();
         let contents_subnodes = subnodes(&mut core.file, contents.sub_node());
         let values = large_row.columns(table.context()).unwrap();
         let mut shared = Vec::new();
-        for (id, length) in [(0x0E04_u16, 4000_usize), (0x0071, 5000), (0x0037, 4010), (0x0070, 4010)] {
-            let (_, value) = table.context().columns().iter().zip(&values).find(|(column, _)| column.prop_id() == id).unwrap();
-            let Some(TableRowColumnValue::Node(cell)) = value else { panic!("{id:#06x}: not a subnode: {value:?}") };
-            let cell_block = contents_subnodes.iter().find(|entry| entry.node() == *cell).unwrap().block();
+        for (id, length) in [
+            (0x0E04_u16, 4000_usize),
+            (0x0071, 5000),
+            (0x0037, 4010),
+            (0x0070, 4010),
+        ] {
+            let (_, value) = table
+                .context()
+                .columns()
+                .iter()
+                .zip(&values)
+                .find(|(column, _)| column.prop_id() == id)
+                .unwrap();
+            let Some(TableRowColumnValue::Node(cell)) = value else {
+                panic!("{id:#06x}: not a subnode: {value:?}")
+            };
+            let cell_block = contents_subnodes
+                .iter()
+                .find(|entry| entry.node() == *cell)
+                .unwrap()
+                .block();
             // The message has the property, and the cell's block is one of the message's own value subnodes.
             assert!(message_store.properties().get(id).is_some(), "{id:#06x}");
             let object_block = message_subnodes
                 .iter()
-                .filter(|entry| entry.node().id_type().ok() == Some(NodeIdType::ListsTablesProperties))
+                .filter(|entry| {
+                    entry.node().id_type().ok() == Some(NodeIdType::ListsTablesProperties)
+                })
                 .map(|entry| entry.block())
                 .find(|block| *block == cell_block);
-            assert!(object_block.is_some(), "{id:#06x}: the contents cell's block {cell_block:?} is no block of the message");
-            assert_eq!(data_tree_leaves(&mut core.file, &tx, cell_block).unwrap().iter().map(|(_, size)| *size as usize).sum::<usize>(), length);
+            assert!(
+                object_block.is_some(),
+                "{id:#06x}: the contents cell's block {cell_block:?} is no block of the message"
+            );
+            assert_eq!(
+                data_tree_leaves(&mut core.file, &tx, cell_block)
+                    .unwrap()
+                    .iter()
+                    .map(|(_, size)| *size as usize)
+                    .sum::<usize>(),
+                length
+            );
             assert_eq!(ref_count(cell_block), 3, "{id:#06x}: two references");
             shared.push(cell_block);
         }
         // The subject's and the topic's cells: the same bytes, each its own property's block.
-        assert_ne!(shared[2], shared[3], "subject and topic cells share one block");
+        assert_ne!(
+            shared[2], shared[3],
+            "subject and topic cells share one block"
+        );
         // The attachment table's file-name cell and the attachment's PidTagAttachFilename.
-        let attachment_table = message_subnodes.iter().find(|entry| entry.node() == NID_ATTACHMENT_TABLE).unwrap();
+        let attachment_table = message_subnodes
+            .iter()
+            .find(|entry| entry.node() == NID_ATTACHMENT_TABLE)
+            .unwrap();
         let table_cells = subnodes(&mut core.file, attachment_table.sub_node());
-        let attachment = message_subnodes.iter().find(|entry| entry.node().id_type().ok() == Some(NodeIdType::Attachment)).unwrap();
+        let attachment = message_subnodes
+            .iter()
+            .find(|entry| entry.node().id_type().ok() == Some(NodeIdType::Attachment))
+            .unwrap();
         let attachment_values = subnodes(&mut core.file, attachment.sub_node());
-        let cells_in_subnodes = table_cells.iter().filter(|entry| entry.node().index() > 0x80).collect::<Vec<_>>();
-        assert_eq!(cells_in_subnodes.len(), 1, "one file-name cell in a subnode");
+        let cells_in_subnodes = table_cells
+            .iter()
+            .filter(|entry| entry.node().index() > 0x80)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            cells_in_subnodes.len(),
+            1,
+            "one file-name cell in a subnode"
+        );
         let cell_block = cells_in_subnodes[0].block();
-        assert!(attachment_values.iter().any(|entry| entry.block() == cell_block), "the file-name cell is a block of the attachment");
+        assert!(
+            attachment_values
+                .iter()
+                .any(|entry| entry.block() == cell_block),
+            "the file-name cell is a block of the attachment"
+        );
         assert_eq!(ref_count(cell_block), 3);
         assert_eq!(shared.len(), 4);
         drop(tx);
@@ -3406,8 +5121,13 @@ mod tests {
         // committed end while the commit is planned, so the cut is what removes it.
         let path = temp("limit");
         let mut writer = UnicodePstWriter::create(&path).unwrap();
-        let first = [UnicodePstBatchMessage { message: message("first", "<first@example.com>", true), attachments: &[] }];
-        writer.append_many_in_folder_with_attachments(&["Inbox"], &first).unwrap();
+        let first = [UnicodePstBatchMessage {
+            message: message("first", "<first@example.com>", true),
+            attachments: &[],
+        }];
+        writer
+            .append_many_in_folder_with_attachments(&["Inbox"], &first)
+            .unwrap();
         let committed = std::fs::metadata(&path).unwrap().len();
         let before = snapshot(&path);
         let len = 1 << 20;
@@ -3421,29 +5141,45 @@ mod tests {
             hidden: false,
             attached_message: None,
         }];
-        let large = [UnicodePstBatchMessage { message: message("large", "<large@example.com>", false), attachments: &attachments }];
+        let large = [UnicodePstBatchMessage {
+            message: message("large", "<large@example.com>", false),
+            attachments: &attachments,
+        }];
         writer.set_max_file_size(Some(committed + 64 * 1024));
-        let error = writer.append_many_in_folder_with_attachments(&["Inbox"], &large).unwrap_err();
+        let error = writer
+            .append_many_in_folder_with_attachments(&["Inbox"], &large)
+            .unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::FileTooLarge, "{error}");
-        let reached = limit_reached(&error).unwrap_or_else(|| panic!("not the typed error: {error}"));
+        let reached =
+            limit_reached(&error).unwrap_or_else(|| panic!("not the typed error: {error}"));
         assert_eq!(reached.limit, committed + 64 * 1024);
         // The file grows by less than the attachment: the commit reuses space the committed state marks free.
         assert!(reached.size > reached.limit, "{reached:?}");
         assert!(writer.poisoned().is_some());
         drop(writer);
-        assert_eq!(std::fs::metadata(&path).unwrap().len(), committed, "the file is cut back to its last commit");
-        assert!(snapshot(&path) == before, "the header or the B-trees changed");
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().len(),
+            committed,
+            "the file is cut back to its last commit"
+        );
+        assert!(
+            snapshot(&path) == before,
+            "the header or the B-trees changed"
+        );
         assert_eq!(folder(&path, &["Inbox"]), (1, 0));
         // The cut file is a store a new session appends to, with and without the attachment.
         let mut again = UnicodePstWriter::open(&path).unwrap();
-        again.append_many_in_folder_with_attachments(&["Inbox"], &large).unwrap();
+        again
+            .append_many_in_folder_with_attachments(&["Inbox"], &large)
+            .unwrap();
         again.close().unwrap();
         assert_eq!(folder(&path, &["Inbox"]), (2, 1));
         std::fs::remove_file(path).unwrap();
     }
 
     #[test]
-    fn a_folder_created_past_the_size_limit_is_abandoned_too_and_a_limit_not_reached_changes_nothing() {
+    fn a_folder_created_past_the_size_limit_is_abandoned_too_and_a_limit_not_reached_changes_nothing(
+    ) {
         // The limit holds for every commit of the session, a folder's creation included (a limit below the file's size
         // refuses any commit; a folder alone fits in the template's free space, so it would not grow the file). A
         // session whose limit is never reached writes the same bytes as one without a limit.
@@ -3457,24 +5193,42 @@ mod tests {
         drop(writer);
         assert_eq!(std::fs::metadata(&path).unwrap().len(), length);
         assert!(snapshot(&path) == before);
-        let store = Rc::new(UnicodeStore::read(Rc::new(UnicodePstFile::open(&path).unwrap())).unwrap());
-        let ipm = store.properties().ipm_sub_tree_entry_id().unwrap().node_id();
-        assert!(crate::find_child_folder(&store, ipm, "New").unwrap().is_none(), "the abandoned folder is in the file");
+        let store =
+            Rc::new(UnicodeStore::read(Rc::new(UnicodePstFile::open(&path).unwrap())).unwrap());
+        let ipm = store
+            .properties()
+            .ipm_sub_tree_entry_id()
+            .unwrap()
+            .node_id();
+        assert!(
+            crate::find_child_folder(&store, ipm, "New")
+                .unwrap()
+                .is_none(),
+            "the abandoned folder is in the file"
+        );
         std::fs::remove_file(&path).unwrap();
 
         let bytes_with = |limit: Option<u64>| {
             let path = temp("limit-same");
             let mut writer = UnicodePstWriter::create(&path).unwrap();
             writer.set_max_file_size(limit);
-            let batch = [UnicodePstBatchMessage { message: message("same", "<same@example.com>", true), attachments: &[] }];
-            writer.append_many_in_folder_with_attachments(&["Inbox", "Sub"], &batch).unwrap();
+            let batch = [UnicodePstBatchMessage {
+                message: message("same", "<same@example.com>", true),
+                attachments: &[],
+            }];
+            writer
+                .append_many_in_folder_with_attachments(&["Inbox", "Sub"], &batch)
+                .unwrap();
             writer.ensure_folder_path(&["Empty"]).unwrap();
             writer.close().unwrap();
             let bytes = std::fs::read(&path).unwrap();
             std::fs::remove_file(path).unwrap();
             bytes
         };
-        assert!(bytes_with(None) == bytes_with(Some(1 << 40)), "a limit that is not reached changed the file");
+        assert!(
+            bytes_with(None) == bytes_with(Some(1 << 40)),
+            "a limit that is not reached changed the file"
+        );
     }
 
     #[test]
@@ -3486,12 +5240,20 @@ mod tests {
             add_free_slot(&mut runs, &mut tail, at, 3);
         }
         assert_eq!(runs, [(0, 64), (128, 192), (256, 320)]);
-        assert_eq!(tail, Some((512, 640)), "the newest run, adjacent slots joined");
+        assert_eq!(
+            tail,
+            Some((512, 640)),
+            "the newest run, adjacent slots joined"
+        );
         let (mut runs, mut tail) = (Vec::new(), None);
         for at in [0, 64, 192] {
             add_free_slot(&mut runs, &mut tail, at, 3);
         }
-        assert_eq!((runs, tail), (vec![(0, 128), (192, 256)], None), "under the cap nothing is held apart");
+        assert_eq!(
+            (runs, tail),
+            (vec![(0, 128), (192, 256)], None),
+            "under the cap nothing is held apart"
+        );
     }
 
     fn payload(len: usize) -> Vec<u8> {
@@ -3504,10 +5266,14 @@ mod tests {
         // AMap, PMap and FMap page and the header's free size with a full rebuild, so these commits cover the cached
         // per-page free space and FMap values of pages that a commit did not touch.
         let path = temp("fmap");
-        drop(UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap());
+        drop(
+            UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap(),
+        );
         let bytes = payload(3 * 1024 * 1024);
         let subjects: Vec<String> = (0..14).map(|index| format!("large {index}")).collect();
-        let ids: Vec<String> = (0..14).map(|index| format!("<large{index}@example.com>")).collect();
+        let ids: Vec<String> = (0..14)
+            .map(|index| format!("<large{index}@example.com>"))
+            .collect();
         let mut writer = UnicodePstWriter::open(&path).unwrap();
         for index in 0..14 {
             let attachment = UnicodePstAttachment {
@@ -3519,33 +5285,73 @@ mod tests {
                 hidden: false,
                 attached_message: None,
             };
-            let folder_path: &[&str] = if index % 2 == 0 { &["Inbox"] } else { &["Inbox", "Sub"] };
+            let folder_path: &[&str] = if index % 2 == 0 {
+                &["Inbox"]
+            } else {
+                &["Inbox", "Sub"]
+            };
             writer
                 .append_many_in_folder_with_attachments(
                     folder_path,
-                    &[UnicodePstBatchMessage { message: message(&subjects[index], &ids[index], false), attachments: &[attachment] }],
+                    &[UnicodePstBatchMessage {
+                        message: message(&subjects[index], &ids[index], false),
+                        attachments: &[attachment],
+                    }],
                 )
                 .unwrap();
         }
         writer.close().unwrap();
         let eof = std::fs::metadata(&path).unwrap().len();
-        assert!(amap_page_count(eof) > FMAP_FIRST_SIZE + 1, "the file reaches the first FMap page ({eof} bytes)");
+        assert!(
+            amap_page_count(eof) > FMAP_FIRST_SIZE + 1,
+            "the file reaches the first FMap page ({eof} bytes)"
+        );
         // The FMap page is all 0xFF, as classic Outlook writes it, never a range's largest free run.
         let file = std::fs::read(&path).unwrap();
         let fmap = &file[FMAP_FIRST_OFFSET as usize..][..PAGE_SIZE];
-        assert!(fmap[..size_of::<MapBits>()].iter().all(|byte| *byte == 0xFF), "FMap bytes are 0xFF");
-        assert_eq!(fmap[size_of::<MapBits>()], PageType::FreeMap as u8, "FMap page type");
+        assert!(
+            fmap[..size_of::<MapBits>()]
+                .iter()
+                .all(|byte| *byte == 0xFF),
+            "FMap bytes are 0xFF"
+        );
+        assert_eq!(
+            fmap[size_of::<MapBits>()],
+            PageType::FreeMap as u8,
+            "FMap page type"
+        );
         // A file whose FMap page holds exact values (an earlier version of this writer wrote them) gets 0xFF again when
         // it is opened, before anything frees space under the stale values.
-        let stale = encode_map_page::<{ PageType::FreeMap as u8 }>([0; size_of::<MapBits>()], PageType::FreeMap, FMAP_FIRST_OFFSET).unwrap();
-        write_at(&mut OpenOptions::new().write(true).open(&path).unwrap(), FMAP_FIRST_OFFSET, &stale).unwrap();
+        let stale = encode_map_page::<{ PageType::FreeMap as u8 }>(
+            [0; size_of::<MapBits>()],
+            PageType::FreeMap,
+            FMAP_FIRST_OFFSET,
+        )
+        .unwrap();
+        write_at(
+            &mut OpenOptions::new().write(true).open(&path).unwrap(),
+            FMAP_FIRST_OFFSET,
+            &stale,
+        )
+        .unwrap();
         let mut writer = UnicodePstWriter::open(&path).unwrap();
         writer
-            .append_many_in_folder_with_attachments(&["Inbox"], &[UnicodePstBatchMessage { message: message("after", "<after@example.com>", false), attachments: &[] }])
+            .append_many_in_folder_with_attachments(
+                &["Inbox"],
+                &[UnicodePstBatchMessage {
+                    message: message("after", "<after@example.com>", false),
+                    attachments: &[],
+                }],
+            )
             .unwrap();
         writer.close().unwrap();
         let file = std::fs::read(&path).unwrap();
-        assert!(file[FMAP_FIRST_OFFSET as usize..][..size_of::<MapBits>()].iter().all(|byte| *byte == 0xFF), "a stale FMap page is 0xFF again");
+        assert!(
+            file[FMAP_FIRST_OFFSET as usize..][..size_of::<MapBits>()]
+                .iter()
+                .all(|byte| *byte == 0xFF),
+            "a stale FMap page is 0xFF again"
+        );
         std::fs::remove_file(path).unwrap();
     }
 
@@ -3557,35 +5363,64 @@ mod tests {
         // after every commit (incremental reference counts against a full recount, every map page against a full
         // rebuild, both trees well formed and equal to the shadow of every entry) cover that path.
         let path = temp("edge");
-        drop(UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap());
+        drop(
+            UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap(),
+        );
         let large = payload(40 * 1024 * 1024 + 5);
         let small = payload(20_000);
         let source = large.clone();
-        let open = move || -> io::Result<Box<dyn Read>> { Ok(Box::new(Trickle { data: source.clone(), at: 0, piece: 65_536, fail_after: None })) };
+        let open = move || -> io::Result<Box<dyn Read>> {
+            Ok(Box::new(Trickle {
+                data: source.clone(),
+                at: 0,
+                piece: 65_536,
+                fail_after: None,
+            }))
+        };
         let streamed = UnicodePstAttachment {
             filename: "large.bin",
             mime_type: "application/octet-stream",
             content_id: None,
             data: &[],
-            stream: Some(UnicodePstAttachmentStream { len: large.len() as u64, open: &open }),
+            stream: Some(UnicodePstAttachmentStream {
+                len: large.len() as u64,
+                open: &open,
+            }),
             hidden: false,
             attached_message: None,
         };
-        let attachment = || UnicodePstAttachment { filename: "small.bin", mime_type: "application/octet-stream", content_id: None, data: &small, stream: None, hidden: false, attached_message: None };
+        let attachment = || UnicodePstAttachment {
+            filename: "small.bin",
+            mime_type: "application/octet-stream",
+            content_id: None,
+            data: &small,
+            stream: None,
+            hidden: false,
+            attached_message: None,
+        };
         let mut writer = UnicodePstWriter::open(&path).unwrap();
         writer
             .append_many_in_folder_with_attachments(
                 &["Inbox"],
                 &[
-                    UnicodePstBatchMessage { message: message("large", "<large@example.com>", false), attachments: &[streamed] },
-                    UnicodePstBatchMessage { message: message("small", "<small@example.com>", false), attachments: &[attachment()] },
+                    UnicodePstBatchMessage {
+                        message: message("large", "<large@example.com>", false),
+                        attachments: &[streamed],
+                    },
+                    UnicodePstBatchMessage {
+                        message: message("small", "<small@example.com>", false),
+                        attachments: &[attachment()],
+                    },
                 ],
             )
             .unwrap();
         writer
             .append_many_in_folder_with_attachments(
                 &["Inbox"],
-                &[UnicodePstBatchMessage { message: message("after", "<after@example.com>", true), attachments: &[attachment()] }],
+                &[UnicodePstBatchMessage {
+                    message: message("after", "<after@example.com>", true),
+                    attachments: &[attachment()],
+                }],
             )
             .unwrap();
         writer.close().unwrap();
@@ -3599,17 +5434,28 @@ mod tests {
         let bytes = payload(3 * 1024 * 1024 + 17);
         let paths = [temp("bytes"), temp("stream")];
         for (index, path) in paths.iter().enumerate() {
-            drop(UnicodePstFile::create(path, &message("first", "<first@example.com>", true)).unwrap());
+            drop(
+                UnicodePstFile::create(path, &message("first", "<first@example.com>", true))
+                    .unwrap(),
+            );
             let source = bytes.clone();
             let open = move || -> io::Result<Box<dyn Read>> {
-                Ok(Box::new(Trickle { data: source.clone(), at: 0, piece: 7, fail_after: None }))
+                Ok(Box::new(Trickle {
+                    data: source.clone(),
+                    at: 0,
+                    piece: 7,
+                    fail_after: None,
+                }))
             };
             let attachment = UnicodePstAttachment {
                 filename: "big.bin",
                 mime_type: "application/octet-stream",
                 content_id: None,
                 data: if index == 0 { &bytes } else { &[] },
-                stream: (index == 1).then_some(UnicodePstAttachmentStream { len: bytes.len() as u64, open: &open }),
+                stream: (index == 1).then_some(UnicodePstAttachmentStream {
+                    len: bytes.len() as u64,
+                    open: &open,
+                }),
                 hidden: false,
                 attached_message: None,
             };
@@ -3617,12 +5463,18 @@ mod tests {
             writer
                 .append_many_in_folder_with_attachments(
                     &["Inbox"],
-                    &[UnicodePstBatchMessage { message: message("second", "<second@example.com>", false), attachments: &[attachment] }],
+                    &[UnicodePstBatchMessage {
+                        message: message("second", "<second@example.com>", false),
+                        attachments: &[attachment],
+                    }],
                 )
                 .unwrap();
             writer.close().unwrap();
         }
-        assert!(std::fs::read(&paths[0]).unwrap() == std::fs::read(&paths[1]).unwrap(), "same bytes, same file");
+        assert!(
+            std::fs::read(&paths[0]).unwrap() == std::fs::read(&paths[1]).unwrap(),
+            "same bytes, same file"
+        );
         for path in paths {
             std::fs::remove_file(path).unwrap();
         }
@@ -3632,23 +5484,49 @@ mod tests {
     fn a_stream_that_is_short_long_or_fails_is_refused_before_the_commit() {
         let bytes = payload(3 * 1024 * 1024);
         for (case, declared, fail_after, expected) in [
-            ("short", bytes.len() as u64 + 1, None, io::ErrorKind::UnexpectedEof),
-            ("long", bytes.len() as u64 - 1, None, io::ErrorKind::InvalidData),
-            ("fails", bytes.len() as u64, Some(2 * 1024 * 1024 + 5), io::ErrorKind::Other),
+            (
+                "short",
+                bytes.len() as u64 + 1,
+                None,
+                io::ErrorKind::UnexpectedEof,
+            ),
+            (
+                "long",
+                bytes.len() as u64 - 1,
+                None,
+                io::ErrorKind::InvalidData,
+            ),
+            (
+                "fails",
+                bytes.len() as u64,
+                Some(2 * 1024 * 1024 + 5),
+                io::ErrorKind::Other,
+            ),
         ] {
             let path = temp(case);
-            drop(UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap());
+            drop(
+                UnicodePstFile::create(&path, &message("first", "<first@example.com>", true))
+                    .unwrap(),
+            );
             let before = snapshot(&path);
             let source = bytes.clone();
             let open = move || -> io::Result<Box<dyn Read>> {
-                Ok(Box::new(Trickle { data: source.clone(), at: 0, piece: 4096, fail_after }))
+                Ok(Box::new(Trickle {
+                    data: source.clone(),
+                    at: 0,
+                    piece: 4096,
+                    fail_after,
+                }))
             };
             let attachment = UnicodePstAttachment {
                 filename: "big.bin",
                 mime_type: "application/octet-stream",
                 content_id: None,
                 data: &[],
-                stream: Some(UnicodePstAttachmentStream { len: declared, open: &open }),
+                stream: Some(UnicodePstAttachmentStream {
+                    len: declared,
+                    open: &open,
+                }),
                 hidden: false,
                 attached_message: None,
             };
@@ -3656,14 +5534,20 @@ mod tests {
             let error = writer
                 .append_many_in_folder_with_attachments(
                     &["Inbox"],
-                    &[UnicodePstBatchMessage { message: message("second", "<second@example.com>", false), attachments: &[attachment] }],
+                    &[UnicodePstBatchMessage {
+                        message: message("second", "<second@example.com>", false),
+                        attachments: &[attachment],
+                    }],
                 )
                 .unwrap_err();
             assert_eq!(error.kind(), expected, "{case}: {error}");
             assert!(writer.poisoned().is_some(), "{case}");
             drop(writer);
             // Blocks went to the file (the failing case reads past two flushes of 128 blocks), the commit did not.
-            assert!(before == snapshot(&path), "{case}: the committed state did not change");
+            assert!(
+                before == snapshot(&path),
+                "{case}: the committed state did not change"
+            );
             assert_eq!(folder(&path, &["Inbox"]), (1, 0), "{case}");
             std::fs::remove_file(path).unwrap();
         }
@@ -3672,20 +5556,35 @@ mod tests {
     #[test]
     fn a_failed_append_keeps_the_committed_state_and_poisons_the_session() {
         let path = temp("poison");
-        drop(UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap());
+        drop(
+            UnicodePstFile::create(&path, &message("first", "<first@example.com>", true)).unwrap(),
+        );
         let mut writer = UnicodePstWriter::open(&path).unwrap();
         writer
             .append_many_in_folder_with_attachments(
                 &["Inbox"],
-                &[UnicodePstBatchMessage { message: message("second", "<second@example.com>", false), attachments: &[] }],
+                &[UnicodePstBatchMessage {
+                    message: message("second", "<second@example.com>", false),
+                    attachments: &[],
+                }],
             )
             .unwrap();
         let snapshot = |path: &Path| {
             let mut file = File::open(path).unwrap();
             let mut header = vec![0; 564];
             file.read_exact(&mut header).unwrap();
-            let state = CommittedState::read_any(&mut OpenOptions::new().read(true).write(true).open(path).unwrap(), None).unwrap();
-            let encode = |bytes: &mut Vec<u8>, write: &dyn Fn(&mut Vec<u8>) -> io::Result<()>| write(bytes).unwrap();
+            let state = CommittedState::read_any(
+                &mut OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(path)
+                    .unwrap(),
+                None,
+            )
+            .unwrap();
+            let encode = |bytes: &mut Vec<u8>, write: &dyn Fn(&mut Vec<u8>) -> io::Result<()>| {
+                write(bytes).unwrap()
+            };
             let mut entries = Vec::new();
             for entry in state.bbt.entries().unwrap().iter() {
                 encode(&mut entries, &|bytes| entry.write(bytes));
@@ -3709,8 +5608,14 @@ mod tests {
             .append_many_in_folder_with_attachments(
                 &["Inbox"],
                 &[
-                    UnicodePstBatchMessage { message: message("third", "<third@example.com>", false), attachments: &[] },
-                    UnicodePstBatchMessage { message: message("fourth", "<fourth@example.com>", false), attachments: &[invalid] },
+                    UnicodePstBatchMessage {
+                        message: message("third", "<third@example.com>", false),
+                        attachments: &[],
+                    },
+                    UnicodePstBatchMessage {
+                        message: message("fourth", "<fourth@example.com>", false),
+                        attachments: &[invalid],
+                    },
                 ],
             )
             .unwrap_err();
@@ -3719,18 +5624,32 @@ mod tests {
         let refused = writer
             .append_many_in_folder_with_attachments(
                 &["Inbox"],
-                &[UnicodePstBatchMessage { message: message("fifth", "<fifth@example.com>", false), attachments: &[] }],
+                &[UnicodePstBatchMessage {
+                    message: message("fifth", "<fifth@example.com>", false),
+                    attachments: &[],
+                }],
             )
             .unwrap_err();
-        assert!(refused.to_string().contains("unusable after a failed commit"), "{refused}");
+        assert!(
+            refused
+                .to_string()
+                .contains("unusable after a failed commit"),
+            "{refused}"
+        );
         drop(writer);
-        assert!(before == snapshot(&path), "the committed state did not change");
+        assert!(
+            before == snapshot(&path),
+            "the committed state did not change"
+        );
 
         let mut writer = UnicodePstWriter::open(&path).unwrap();
         writer
             .append_many_in_folder_with_attachments(
                 &["Inbox"],
-                &[UnicodePstBatchMessage { message: message("sixth", "<sixth@example.com>", false), attachments: &[] }],
+                &[UnicodePstBatchMessage {
+                    message: message("sixth", "<sixth@example.com>", false),
+                    attachments: &[],
+                }],
             )
             .unwrap();
         writer.close().unwrap();
@@ -3742,7 +5661,9 @@ mod tests {
 /// The logical content of every node of a Unicode PST: (NID, parent NID, data stream, subnode streams by NID path).
 /// Diagnostics for equivalence checks between writer versions whose block layout differs; not part of the writer API.
 #[doc(hidden)]
-pub fn debug_node_streams(path: impl AsRef<Path>) -> io::Result<Vec<(u32, u32, Vec<u8>, Vec<(Vec<u32>, Vec<u8>)>)>> {
+pub fn debug_node_streams(
+    path: impl AsRef<Path>,
+) -> io::Result<Vec<(u32, u32, Vec<u8>, Vec<(Vec<u32>, Vec<u8>)>)>> {
     let mut file = File::open(path.as_ref())?;
     let state = CommittedState::read_any(&mut file, None)?;
     let tx = Tx::new(&state);
@@ -3773,7 +5694,12 @@ pub fn debug_node_streams(path: impl AsRef<Path>) -> io::Result<Vec<(u32, u32, V
             }
         }
         subnodes.sort();
-        nodes.push((u32::from(entry.node()), entry.parent().map(u32::from).unwrap_or(0), data, subnodes));
+        nodes.push((
+            u32::from(entry.node()),
+            entry.parent().map(u32::from).unwrap_or(0),
+            data,
+            subnodes,
+        ));
     }
     Ok(nodes)
 }
@@ -3782,7 +5708,9 @@ pub fn debug_node_streams(path: impl AsRef<Path>) -> io::Result<Vec<(u32, u32, V
 /// with an HNHDR, signature 0xEC), the fill-level bytes it stores: page 0's `rgbFillLevel` (4 bytes), then the
 /// `rgbFillLevel` of every HNBITMAPHDR page (pages 8, 136, ...; 64 bytes each). Returns `(node, subnode path, pages,
 /// fill-level bytes)`, sorted. Leaves are decoded with the file's own encoding. Measurement and test use only.
-pub fn debug_heap_fill_levels(path: impl AsRef<Path>) -> io::Result<Vec<(u32, Vec<u32>, usize, Vec<u8>)>> {
+pub fn debug_heap_fill_levels(
+    path: impl AsRef<Path>,
+) -> io::Result<Vec<(u32, Vec<u32>, usize, Vec<u8>)>> {
     let mut file = File::open(path.as_ref())?;
     let state = CommittedState::read_any(&mut file, None)?;
     let tx = Tx::new(&state);
@@ -3797,7 +5725,12 @@ pub fn debug_heap_fill_levels(path: impl AsRef<Path>) -> io::Result<Vec<(u32, Ve
             let entry = bbt_entry(&tx, leaf)?;
             match UnicodeDataTree::read(file, crypt, &entry)? {
                 DataTree::Leaf(leaf) => pages.push(leaf.data().to_vec()),
-                DataTree::Intermediate(_) => return Err(io::Error::new(io::ErrorKind::InvalidData, "expected a leaf data block")),
+                DataTree::Intermediate(_) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "expected a leaf data block",
+                    ))
+                }
             }
         }
         Ok(pages)
@@ -3847,12 +5780,16 @@ pub fn debug_heap_fill_levels(path: impl AsRef<Path>) -> io::Result<Vec<(u32, Ve
 /// blocks, the mismatches `(key, stored, expected)`, the unreferenced block keys and the referenced keys that have no
 /// block. Measurement and test use only.
 #[doc(hidden)]
-pub fn debug_block_references(path: impl AsRef<Path>) -> io::Result<(usize, Vec<(u64, u16, u32)>, Vec<u64>, Vec<u64>)> {
+pub fn debug_block_references(
+    path: impl AsRef<Path>,
+) -> io::Result<(usize, Vec<(u64, u16, u32)>, Vec<u64>, Vec<u64>)> {
     let mut file = File::open(path.as_ref())?;
     let state = CommittedState::read_any(&mut file, None)?;
     let mut references: BTreeMap<u64, u32> = BTreeMap::new();
     let mut pending: Vec<UnicodeBlockId> = Vec::new();
-    let note = |block: UnicodeBlockId, references: &mut BTreeMap<u64, u32>, pending: &mut Vec<UnicodeBlockId>| {
+    let note = |block: UnicodeBlockId,
+                references: &mut BTreeMap<u64, u32>,
+                pending: &mut Vec<UnicodeBlockId>| {
         let key = block.search_key();
         if key == 0 {
             return;
@@ -3902,22 +5839,36 @@ pub fn debug_block_references(path: impl AsRef<Path>) -> io::Result<(usize, Vec<
 /// a corruption) and the units something references that the map marks free (a later allocation could overwrite them: a
 /// corruption), with up to 20 file offsets of the latter; then the header's free size and the free bytes the map pages
 /// on disk give.
-pub fn debug_allocation_map(path: impl AsRef<Path>) -> io::Result<(usize, usize, u64, u64, Vec<u64>, u64, u64)> {
+pub fn debug_allocation_map(
+    path: impl AsRef<Path>,
+) -> io::Result<(usize, usize, u64, u64, Vec<u64>, u64, u64)> {
     let mut file = File::open(path.as_ref())?;
     let header = UnicodeHeader::read(&mut file)?;
     let root = header.root();
     let count = amap_page_count(root.file_eof_index().index()) as usize;
-    let (mut differing, mut leaked, mut unmarked, mut sample, mut free) = (0, 0_u64, 0_u64, Vec::new(), 0_u64);
+    let (mut differing, mut leaked, mut unmarked, mut sample, mut free) =
+        (0, 0_u64, 0_u64, Vec::new(), 0_u64);
     let mut window = 0;
     while window < count {
         let end = (window + AMAP_CHECK_WINDOW).min(count);
         let mut expected: Vec<MapBits> = (window..end).map(reserved_bits).collect();
-        btree_allocations(&mut file, *root.node_btree(), *root.block_btree(), &mut |offset, size| {
-            let (first, last) = (amap_index_of(offset), amap_index_of(offset + size - 1));
-            for index in first.max(window)..=last.min(end - 1) {
-                mark_range(&mut expected[index - window], index, offset, offset + size, true);
-            }
-        })?;
+        btree_allocations(
+            &mut file,
+            *root.node_btree(),
+            *root.block_btree(),
+            &mut |offset, size| {
+                let (first, last) = (amap_index_of(offset), amap_index_of(offset + size - 1));
+                for index in first.max(window)..=last.min(end - 1) {
+                    mark_range(
+                        &mut expected[index - window],
+                        index,
+                        offset,
+                        offset + size,
+                        true,
+                    );
+                }
+            },
+        )?;
         for index in window..end {
             let bits = read_amap_bits(&mut file, index)?;
             free += free_bytes_of(&bits);
@@ -3938,7 +5889,15 @@ pub fn debug_allocation_map(path: impl AsRef<Path>) -> io::Result<(usize, usize,
         }
         window = end;
     }
-    Ok((count, differing, leaked, unmarked, sample, root.amap_free_size().index(), free))
+    Ok((
+        count,
+        differing,
+        leaked,
+        unmarked,
+        sample,
+        root.amap_free_size().index(),
+        free,
+    ))
 }
 
 impl WriterCore {
@@ -3954,17 +5913,26 @@ impl WriterCore {
             fn tree<E>(tree: &DiskTree<E>) -> String {
                 // The bounded page cache is all a tree keeps: decoded pages and their entries.
                 let cache = tree.cache.borrow();
-                let entries: usize = cache.0.values().map(|page| match &**page {
-                    TreePage::Leaf(items) => items.len(),
-                    TreePage::Inner(_, children) => children.len(),
-                }).sum();
+                let entries: usize = cache
+                    .0
+                    .values()
+                    .map(|page| match &**page {
+                        TreePage::Leaf(items) => items.len(),
+                        TreePage::Inner(_, children) => children.len(),
+                    })
+                    .sum();
                 let bytes: usize = cache.0.values().map(|page| match &**page {
                     TreePage::Leaf(items) => items.capacity() * size_of::<E>(),
                     TreePage::Inner(_, children) => children.capacity() * size_of::<(u64, UnicodePageRef)>(),
                 } + size_of::<TreePage<E>>() + 2 * size_of::<usize>() + 16).sum::<usize>() + cache.1.capacity() * size_of::<u64>();
-                format!("{{\"cached_pages\":{},\"cached_entries\":{entries},\"cache_bytes\":{bytes}}}", cache.0.len())
+                format!(
+                    "{{\"cached_pages\":{},\"cached_entries\":{entries},\"cache_bytes\":{bytes}}}",
+                    cache.0.len()
+                )
             }
-            let Some(state) = self.state.as_ref() else { return String::from("null") };
+            let Some(state) = self.state.as_ref() else {
+                return String::from("null");
+            };
             let amap = &state.amap;
             let runs_bytes = amap.free_runs.capacity() * 16;
             let cache_bytes = amap.cache.capacity() * size_of::<(usize, MapBits)>();
@@ -3985,7 +5953,8 @@ impl WriterCore {
             use std::mem::size_of;
             // A state is a few integers per folder appended to; pages are read per commit and dropped after it.
             let rows: usize = self.contents.values().map(|c| c.row_count).sum();
-            let state_bytes = self.contents.capacity() * (size_of::<u32>() + size_of::<ContentsState>() + 1);
+            let state_bytes =
+                self.contents.capacity() * (size_of::<u32>() + size_of::<ContentsState>() + 1);
             format!(
                 "{{\"folders\":{},\"rows\":{rows},\"state_bytes\":{state_bytes},\"folder_paths\":{},\"folder_path_bytes\":{}}}",
                 self.contents.len(),

@@ -47,7 +47,12 @@ impl Default for ManifestOptions {
     /// 4,096 items and 64 MiB per commit. A commit does not re-read the file, so its cost does not grow with the file;
     /// fewer commits mean fewer sync barriers (three per commit).
     fn default() -> Self {
-        Self { max_file_size: None, excluded: None, batch_items: 4096, batch_bytes: 64 * 1024 * 1024 }
+        Self {
+            max_file_size: None,
+            excluded: None,
+            batch_items: 4096,
+            batch_bytes: 64 * 1024 * 1024,
+        }
     }
 }
 
@@ -87,9 +92,21 @@ impl Report {
 
     /// The PST files written, in order.
     pub fn outputs(&self) -> Vec<PathBuf> {
-        match self.line.get("outputs").and_then(|outputs| outputs.as_array()) {
-            Some(outputs) => outputs.iter().filter_map(|output| output["path"].as_str()).map(PathBuf::from).collect(),
-            None => self.line["output"]["path"].as_str().map(PathBuf::from).into_iter().collect(),
+        match self
+            .line
+            .get("outputs")
+            .and_then(|outputs| outputs.as_array())
+        {
+            Some(outputs) => outputs
+                .iter()
+                .filter_map(|output| output["path"].as_str())
+                .map(PathBuf::from)
+                .collect(),
+            None => self.line["output"]["path"]
+                .as_str()
+                .map(PathBuf::from)
+                .into_iter()
+                .collect(),
         }
     }
 }
@@ -113,7 +130,8 @@ pub struct ConvertError {
 impl ConvertError {
     /// The error as the one JSON line the command line prints on stderr: `{"error", "item_key", "detail"}`.
     pub fn error_line(&self) -> String {
-        serde_json::json!({ "error": self.code, "item_key": self.item_key, "detail": self.detail }).to_string()
+        serde_json::json!({ "error": self.code, "item_key": self.item_key, "detail": self.detail })
+            .to_string()
     }
 }
 
@@ -127,7 +145,12 @@ impl std::error::Error for ConvertError {}
 
 impl From<manifest::Failure> for ConvertError {
     fn from(failure: manifest::Failure) -> Self {
-        Self { code: failure.code, exit_code: failure.exit, item_key: failure.item_key, detail: failure.detail }
+        Self {
+            code: failure.code,
+            exit_code: failure.exit,
+            item_key: failure.item_key,
+            detail: failure.detail,
+        }
     }
 }
 
@@ -137,14 +160,28 @@ impl From<manifest::Failure> for ConvertError {
 ///
 /// A [`ConvertError`] for invalid input, an existing output path, an attachment that does not match its recorded size
 /// or hash, or a writer or I/O failure. Everything this call created is removed first.
-pub fn convert_manifest(manifest: &Path, output: &Output, options: &ManifestOptions) -> Result<Report, ConvertError> {
+pub fn convert_manifest(
+    manifest: &Path,
+    output: &Output,
+    options: &ManifestOptions,
+) -> Result<Report, ConvertError> {
     convert_manifest_until(manifest, output, options, None)
 }
 
 /// As [`convert_manifest`]; once `cancel` is true, it stops before the next item with `interrupted`.
-pub(crate) fn convert_manifest_until(manifest: &Path, output: &Output, options: &ManifestOptions, cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>) -> Result<Report, ConvertError> {
+pub(crate) fn convert_manifest_until(
+    manifest: &Path,
+    output: &Output,
+    options: &ManifestOptions,
+    cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+) -> Result<Report, ConvertError> {
     if options.batch_items == 0 || options.batch_bytes == 0 {
-        return Err(ConvertError { code: "usage", exit_code: 2, item_key: None, detail: "batch limits must be positive".into() });
+        return Err(ConvertError {
+            code: "usage",
+            exit_code: 2,
+            item_key: None,
+            detail: "batch limits must be positive".into(),
+        });
     }
     let options = manifest::Options {
         manifest: manifest.to_path_buf(),
@@ -158,5 +195,8 @@ pub(crate) fn convert_manifest_until(manifest: &Path, output: &Output, options: 
         batch_bytes: options.batch_bytes,
         cancel,
     };
-    Ok(Report { line: manifest::run(&options)?, warnings: Vec::new() })
+    Ok(Report {
+        line: manifest::run(&options)?,
+        warnings: Vec::new(),
+    })
 }

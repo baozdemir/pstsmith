@@ -217,7 +217,9 @@ impl HeapFillLevel {
         fill_levels
             .iter()
             .enumerate()
-            .fold(0, |acc, (index, &level)| acc | ((level as u32) << (4 * index)))
+            .fold(0, |acc, (index, &level)| {
+                acc | ((level as u32) << (4 * index))
+            })
     }
 }
 
@@ -742,6 +744,9 @@ mod fill_level_tests {
         assert_eq!(packed & 0x0F, 0x0F, "block 0 in the low nibble");
         assert_eq!(packed.to_le_bytes()[0], 0x1F);
         let unpacked = HeapFillLevel::unpack_fill_levels(packed);
-        assert_eq!(unpacked.map(|level| level as u8), levels.map(|level| level as u8));
+        assert_eq!(
+            unpacked.map(|level| level as u8),
+            levels.map(|level| level as u8)
+        );
     }
 }

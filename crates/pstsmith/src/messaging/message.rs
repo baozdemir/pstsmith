@@ -285,7 +285,8 @@ where
             let sub_nodes: BTreeMap<_, _> = match node.sub_node() {
                 None => BTreeMap::new(),
                 Some(sub_node) => {
-                    let block = block_btree.find_entry(file, sub_node.search_key(), &mut page_cache)?;
+                    let block =
+                        block_btree.find_entry(file, sub_node.search_key(), &mut page_cache)?;
                     let sub_nodes = SubNodeTree::<Pst>::read(file, &block)?;
                     sub_nodes
                         .entries(file, &block_btree, &mut page_cache)?

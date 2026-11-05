@@ -6,7 +6,11 @@ use super::Origin;
 use serde_json::{json, Value};
 
 fn origin() -> Origin {
-    Origin { container: "Inbox.mbox".into(), ordinal: 1, ..Origin::default() }
+    Origin {
+        container: "Inbox.mbox".into(),
+        ordinal: 1,
+        ..Origin::default()
+    }
 }
 
 fn map(raw: &str) -> (Value, MemoryStage) {
@@ -41,7 +45,10 @@ fn subject_decodes_rfc2047() {
 #[test]
 fn sender_and_message_id() {
     let (message, _) = map(SIMPLE);
-    assert_eq!(message["sender"], json!({"name": "Sender Name", "email": "sender@example.invalid"}));
+    assert_eq!(
+        message["sender"],
+        json!({"name": "Sender Name", "email": "sender@example.invalid"})
+    );
     assert_eq!(message["message_id"], "<simple@example.invalid>");
     assert_eq!(message["message_class"], "IPM.Note");
 }
@@ -71,8 +78,14 @@ fn received_time_prefers_topmost_received() {
 fn received_time_falls_back_to_the_mbox_date_then_date() {
     let raw = SIMPLE.replace("Received: from relay.example.invalid by mx.example.invalid; Mon, 01 Jan 2024 08:00:05 +0000\r\n", "")
         .replace("Received: from client.example.invalid by relay.example.invalid; Mon, 01 Jan 2024 08:00:01 +0000\r\n", "");
-    let mbox = Origin { mbox_date: Some(1_704_100_000), ..origin() };
-    assert_eq!(map_bytes(raw.as_bytes(), &mbox).0.message["received_time"], 1_704_100_000);
+    let mbox = Origin {
+        mbox_date: Some(1_704_100_000),
+        ..origin()
+    };
+    assert_eq!(
+        map_bytes(raw.as_bytes(), &mbox).0.message["received_time"],
+        1_704_100_000
+    );
     assert_eq!(map(&raw).0["received_time"], 1_704_096_000);
 }
 
@@ -96,7 +109,10 @@ fn transport_headers_are_the_header_block() {
 fn transport_headers_utf8_then_latin1() {
     let raw = b"From: a@example.invalid\r\nX-Note: caf\xe9\r\nSubject: s\r\n\r\nbody\r\n";
     let (item, _) = map_bytes(raw, &origin());
-    assert!(item.message["transport_headers"].as_str().unwrap().contains("X-Note: café\r\n"));
+    assert!(item.message["transport_headers"]
+        .as_str()
+        .unwrap()
+        .contains("X-Note: café\r\n"));
 }
 
 #[test]
@@ -118,7 +134,10 @@ Content-ID: <logo@example.invalid>\r\nContent-Transfer-Encoding: base64\r\n\r\ni
 fn alternative_gives_body_and_html() {
     let (message, _) = map(ALTERNATIVE);
     assert_eq!(message["body"], "Plain text");
-    assert_eq!(message["html"], "<p>HTML <img src=\"cid:logo@example.invalid\"></p>");
+    assert_eq!(
+        message["html"],
+        "<p>HTML <img src=\"cid:logo@example.invalid\"></p>"
+    );
 }
 
 #[test]
@@ -171,7 +190,11 @@ fn text_attachments_keep_their_bytes() {
     let (message, stage) = map(MIXED);
     let attachments = message["attachments"].as_array().unwrap();
     assert_eq!(attachments[1]["name"], "notlar.txt");
-    assert_eq!(staged(&stage, &attachments[1]), b"\xfe\xf0\xfd", "ISO-8859-9 bytes, not re-encoded");
+    assert_eq!(
+        staged(&stage, &attachments[1]),
+        b"\xfe\xf0\xfd",
+        "ISO-8859-9 bytes, not re-encoded"
+    );
 }
 
 #[test]
@@ -183,7 +206,10 @@ fn tnef_and_ics_stay_files() {
     assert_eq!(attachments[2]["mime"], "application/ms-tnef");
     assert_eq!(attachments[3]["name"], "attachment-4.ics");
     assert_eq!(attachments[3]["mime"], "text/calendar");
-    assert_eq!(staged(&stage, &attachments[3]), b"BEGIN:VCALENDAR\r\nEND:VCALENDAR");
+    assert_eq!(
+        staged(&stage, &attachments[3]),
+        b"BEGIN:VCALENDAR\r\nEND:VCALENDAR"
+    );
     assert_eq!(message["body"], "See attached.");
 }
 
@@ -214,7 +240,12 @@ fn rfc822_part_is_attached_message() {
 }
 
 fn depth_of(message: &Value) -> usize {
-    match message["attachments"].as_array().unwrap().iter().find(|a| a["kind"] == "message") {
+    match message["attachments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["kind"] == "message")
+    {
         Some(attachment) => 1 + depth_of(&attachment["message"]),
         None => 0,
     }
@@ -230,10 +261,20 @@ fn nesting_deeper_than_32_becomes_an_eml_file() {
     let (item, stage) = map_bytes(nested(MAX_NESTING + 2).as_bytes(), &origin());
     assert_eq!(depth_of(&item.message), MAX_NESTING);
     let mut deepest = &item.message;
-    while let Some(attachment) = deepest["attachments"].as_array().unwrap().iter().find(|a| a["kind"] == "message") {
+    while let Some(attachment) = deepest["attachments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["kind"] == "message")
+    {
         deepest = &attachment["message"];
     }
-    let file = deepest["attachments"].as_array().unwrap().iter().find(|a| a["kind"] == "file").unwrap();
+    let file = deepest["attachments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["kind"] == "file")
+        .unwrap();
     assert_eq!(file["mime"], "message/rfc822");
     assert!(file["name"].as_str().unwrap().ends_with(".eml"));
     assert!(staged(&stage, file).starts_with(b"From: l1@example.invalid"));
@@ -242,7 +283,9 @@ fn nesting_deeper_than_32_becomes_an_eml_file() {
 
 #[test]
 fn importance_header_wins_over_x_priority() {
-    let with = |headers: &str| map(&SIMPLE.replace("Subject:", &format!("{headers}Subject:"))).0["importance"].clone();
+    let with = |headers: &str| {
+        map(&SIMPLE.replace("Subject:", &format!("{headers}Subject:"))).0["importance"].clone()
+    };
     assert_eq!(with(""), 1);
     assert_eq!(with("Importance: High\r\nX-Priority: 5\r\n"), 2);
     assert_eq!(with("Importance: low\r\n"), 0);
@@ -253,13 +296,19 @@ fn importance_header_wins_over_x_priority() {
 
 #[test]
 fn keywords_become_categories() {
-    let (message, _) = map(&SIMPLE.replace("Subject:", "Keywords: Project X, Müşteri, Project X\r\nSubject:"));
+    let (message, _) = map(&SIMPLE.replace(
+        "Subject:",
+        "Keywords: Project X, Müşteri, Project X\r\nSubject:",
+    ));
     assert_eq!(message["categories"], json!(["Project X", "Müşteri"]));
 }
 
 #[test]
 fn gmail_labels_set_folder_read_state_and_categories() {
-    let raw = SIMPLE.replace("Subject:", "X-Gmail-Labels: Sent,Unread,Starred,Müşteri\r\nSubject:");
+    let raw = SIMPLE.replace(
+        "Subject:",
+        "X-Gmail-Labels: Sent,Unread,Starred,Müşteri\r\nSubject:",
+    );
     let (item, _) = map_bytes(raw.as_bytes(), &origin());
     assert_eq!(item.folder.as_deref(), Some("Sent Items"));
     assert_eq!(item.message["is_read"], false);
@@ -282,29 +331,47 @@ fn read_state_order() {
     // An answered message was read (mutt, Eudora: X-Status A).
     assert_eq!(read("X-Status: A\r\n", &plain), true);
     // The Maildir flags are the source's own state and come first.
-    let unseen = Origin { seen: Some(false), ..origin() };
+    let unseen = Origin {
+        seen: Some(false),
+        ..origin()
+    };
     assert_eq!(read("Status: RO\r\n", &unseen), false);
-    let seen = Origin { seen: Some(true), ..origin() };
+    let seen = Origin {
+        seen: Some(true),
+        ..origin()
+    };
     assert_eq!(read("X-Gmail-Labels: Unread\r\n", &seen), true);
-    assert_eq!(read("X-Gmail-Labels: Unread\r\nStatus: RO\r\n", &plain), false);
+    assert_eq!(
+        read("X-Gmail-Labels: Unread\r\nStatus: RO\r\n", &plain),
+        false
+    );
 }
 
 #[test]
 fn draft_flags() {
-    let maildir = Origin { draft: true, ..origin() };
+    let maildir = Origin {
+        draft: true,
+        ..origin()
+    };
     let (item, _) = map_bytes(SIMPLE.as_bytes(), &maildir);
     assert_eq!(item.message["is_draft"], true);
     assert_eq!(item.message["sent_time"], Value::Null);
     assert_eq!(item.message["received_time"], Value::Null);
     let gmail = SIMPLE.replace("Subject:", "X-Gmail-Labels: Drafts\r\nSubject:");
-    assert_eq!(map_bytes(gmail.as_bytes(), &origin()).0.message["is_draft"], true);
+    assert_eq!(
+        map_bytes(gmail.as_bytes(), &origin()).0.message["is_draft"],
+        true
+    );
     assert_eq!(map(SIMPLE).0["is_draft"], false);
 }
 
 #[test]
 fn thunderbird_draft_info_is_not_a_draft() {
     // Thunderbird keeps X-Mozilla-Draft-Info on messages it sent and copied to Sent; it is no draft state.
-    let raw = SIMPLE.replace("Subject:", "X-Mozilla-Draft-Info: internal/draft; vcard=0\r\nSubject:");
+    let raw = SIMPLE.replace(
+        "Subject:",
+        "X-Mozilla-Draft-Info: internal/draft; vcard=0\r\nSubject:",
+    );
     let (item, _) = map_bytes(raw.as_bytes(), &origin());
     assert_eq!(item.message["is_draft"], false);
     assert_eq!(item.message["sent_time"], 1_704_096_000);
@@ -360,7 +427,12 @@ fn dsn_report_class_and_recipient_properties() {
     assert_eq!(to.len(), 1);
     assert_eq!(to[0]["name"], "a@example.invalid");
     assert_eq!(to[0]["email"], "a@example.invalid");
-    let status = to[0]["properties"].as_array().unwrap().iter().find(|p| p["tag"] == "0x0C20").unwrap();
+    let status = to[0]["properties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["tag"] == "0x0C20")
+        .unwrap();
     assert_eq!(status["value"], 511);
     assert_eq!(message["properties"][0]["tag"], "0x6820");
     assert_eq!(message["body"], "Undeliverable");
@@ -382,10 +454,27 @@ Final-Recipient: rfc822; reader@example.invalid\r\nDisposition: manual-action/MD
 
 #[test]
 fn search_key_depends_on_container_and_ordinal() {
-    let a = Origin { container: "Inbox.mbox".into(), ordinal: 3, ..Origin::default() };
-    let b = Origin { container: "Inbox.mbox".into(), ordinal: 4, ..Origin::default() };
-    let c = Origin { container: "Archive.mbox".into(), ordinal: 3, ..Origin::default() };
-    let key = |origin: &Origin| map_bytes(SIMPLE.as_bytes(), origin).0.message["search_key"].as_str().unwrap().to_string();
+    let a = Origin {
+        container: "Inbox.mbox".into(),
+        ordinal: 3,
+        ..Origin::default()
+    };
+    let b = Origin {
+        container: "Inbox.mbox".into(),
+        ordinal: 4,
+        ..Origin::default()
+    };
+    let c = Origin {
+        container: "Archive.mbox".into(),
+        ordinal: 3,
+        ..Origin::default()
+    };
+    let key = |origin: &Origin| {
+        map_bytes(SIMPLE.as_bytes(), origin).0.message["search_key"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
     assert_eq!(key(&a).len(), 32);
     assert!(key(&a).bytes().all(|b| b.is_ascii_hexdigit()));
     assert_eq!(key(&a), key(&a.clone()));
@@ -409,7 +498,9 @@ fn unreadable_message_is_kept_as_an_eml_attachment() {
 fn nul_bytes_and_huge_headers_do_not_panic() {
     let mut raw = b"From: a@example.invalid\r\nSubject: nul\x00byte\r\nX-Big: ".to_vec();
     raw.extend(std::iter::repeat_n(b'x', 10 * 1024 * 1024));
-    raw.extend_from_slice(b"\r\nContent-Type: multipart/mixed; boundary=never\r\n\r\nno boundary ever\r\n");
+    raw.extend_from_slice(
+        b"\r\nContent-Type: multipart/mixed; boundary=never\r\n\r\nno boundary ever\r\n",
+    );
     let (item, _) = map_bytes(&raw, &origin());
     assert!(item.message["transport_headers"].as_str().unwrap().len() > 10 * 1024 * 1024);
 }
@@ -425,28 +516,59 @@ fn turkish_windows_1254_subject() {
 #[test]
 fn every_key_of_the_nested_form_is_present() {
     let (message, _) = map(SIMPLE);
-    let keys: Vec<&str> = message.as_object().unwrap().keys().map(String::as_str).collect();
+    let keys: Vec<&str> = message
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
     for key in [
-        "search_key", "message_id", "message_class", "subject", "sender", "to", "cc", "bcc", "body", "html", "sent_time",
-        "received_time", "created_time", "last_modified_time", "is_draft", "is_read", "importance", "categories",
-        "transport_headers", "properties", "attachments",
+        "search_key",
+        "message_id",
+        "message_class",
+        "subject",
+        "sender",
+        "to",
+        "cc",
+        "bcc",
+        "body",
+        "html",
+        "sent_time",
+        "received_time",
+        "created_time",
+        "last_modified_time",
+        "is_draft",
+        "is_read",
+        "importance",
+        "categories",
+        "transport_headers",
+        "properties",
+        "attachments",
     ] {
         assert!(keys.contains(&key), "{key}");
     }
     assert_eq!(keys.len(), 21);
 }
 
-
 #[test]
 fn deeply_nested_multiparts_do_not_overflow_the_stack() {
     let depth = 200_000;
     let mut raw = String::from("From: a@example.invalid\r\nSubject: deep\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=b0\r\n\r\n");
     for level in 1..depth {
-        raw.push_str(&format!("--b{}\r\nContent-Type: multipart/mixed; boundary=b{level}\r\n\r\n", level - 1));
+        raw.push_str(&format!(
+            "--b{}\r\nContent-Type: multipart/mixed; boundary=b{level}\r\n\r\n",
+            level - 1
+        ));
     }
-    raw.push_str(&format!("--b{}\r\nContent-Type: text/plain\r\n\r\ninnermost\r\n", depth - 1));
+    raw.push_str(&format!(
+        "--b{}\r\nContent-Type: text/plain\r\n\r\ninnermost\r\n",
+        depth - 1
+    ));
     // Run on a small stack, as a worker thread may have.
-    let handle = std::thread::Builder::new().stack_size(256 * 1024).spawn(move || map(&raw).0["body"].clone()).unwrap();
+    let handle = std::thread::Builder::new()
+        .stack_size(256 * 1024)
+        .spawn(move || map(&raw).0["body"].clone())
+        .unwrap();
     let body = handle.join().expect("no stack overflow");
     assert!(body.as_str().unwrap().contains("innermost"));
 }
@@ -478,10 +600,13 @@ fn deep_unencoded_rfc822_nesting_does_not_overflow_the_stack() {
     }
     raw.push_str("Subject: bottom\r\n\r\nbottom\r\n");
     // A 1 MiB stack, as the main thread has on Windows.
-    let handle = std::thread::Builder::new().stack_size(1 << 20).spawn(move || {
-        let (item, _) = map_bytes(raw.as_bytes(), &origin());
-        depth_of(&item.message)
-    }).unwrap();
+    let handle = std::thread::Builder::new()
+        .stack_size(1 << 20)
+        .spawn(move || {
+            let (item, _) = map_bytes(raw.as_bytes(), &origin());
+            depth_of(&item.message)
+        })
+        .unwrap();
     assert_eq!(handle.join().expect("no stack overflow"), MAX_NESTING);
 }
 
@@ -516,7 +641,10 @@ fn header_block_decodes_each_line_on_its_own() {
 
 #[test]
 fn cid_references_match_any_scheme_case_and_percent_encoding() {
-    let raw = ALTERNATIVE.replace("src=\"cid:logo@example.invalid\"", "src=\"CID:logo%40example.invalid\"");
+    let raw = ALTERNATIVE.replace(
+        "src=\"cid:logo@example.invalid\"",
+        "src=\"CID:logo%40example.invalid\"",
+    );
     let (message, _) = map(&raw);
     assert_eq!(message["attachments"][0]["inline"], true);
     assert_eq!(message["attachments"][1]["inline"], false);
@@ -524,8 +652,15 @@ fn cid_references_match_any_scheme_case_and_percent_encoding() {
 
 #[test]
 fn signed_message_with_an_8bit_content_type_keeps_its_boundary() {
-    let raw = SIGNED.replace("micalg=sha-256;", "micalg=sha-256; x-note=caf\u{e9};").into_bytes();
-    let raw: Vec<u8> = String::from_utf8(raw).unwrap().replace('\u{e9}', "\u{0}").bytes().map(|b| if b == 0 { 0xe9 } else { b }).collect();
+    let raw = SIGNED
+        .replace("micalg=sha-256;", "micalg=sha-256; x-note=caf\u{e9};")
+        .into_bytes();
+    let raw: Vec<u8> = String::from_utf8(raw)
+        .unwrap()
+        .replace('\u{e9}', "\u{0}")
+        .bytes()
+        .map(|b| if b == 0 { 0xe9 } else { b })
+        .collect();
     let (item, stage) = map_bytes(&raw, &origin());
     let p7m = staged(&stage, &item.message["attachments"][0]);
     assert!(p7m.starts_with(b"Content-Type: multipart/signed; protocol=\"application/pkcs7-signature\"; micalg=sha-256; x-note=caf\xe9;\r\n boundary=s\r\n\r\n--s\r\n"), "{}", String::from_utf8_lossy(&p7m[..80]));
@@ -544,9 +679,17 @@ fn in_reply_to_and_references_are_written() {
     let raw = SIMPLE.replace("Subject:", "In-Reply-To: <parent@example.invalid>\r\nReferences: <root@example.invalid>\r\n <parent@example.invalid>\r\nSubject:");
     let (message, _) = map(&raw);
     let properties = message["properties"].as_array().unwrap();
-    let value = |tag: &str| properties.iter().find(|p| p["tag"] == tag).map(|p| p["value"].clone());
+    let value = |tag: &str| {
+        properties
+            .iter()
+            .find(|p| p["tag"] == tag)
+            .map(|p| p["value"].clone())
+    };
     assert_eq!(value("0x1042"), Some(json!("<parent@example.invalid>")));
-    assert_eq!(value("0x1039"), Some(json!("<root@example.invalid> <parent@example.invalid>")));
+    assert_eq!(
+        value("0x1039"),
+        Some(json!("<root@example.invalid> <parent@example.invalid>"))
+    );
 }
 
 #[test]
@@ -557,17 +700,41 @@ Content-Type: multipart/report; report-type=disposition-notification; boundary=m
 --m\r\nContent-Type: text/plain\r\n\r\nRead\r\n--m\r\nContent-Type: message/disposition-notification\r\n\r\n\
 Final-Recipient: rfc822; reader@example.invalid\r\nOriginal-Message-ID: <original@example.invalid>\r\nDisposition: manual-action/MDN-sent-manually; displayed\r\n\r\n--m--\r\n";
     let (message, _) = map(raw);
-    let tags: Vec<&str> = message["properties"].as_array().unwrap().iter().map(|p| p["tag"].as_str().unwrap()).collect();
-    assert_eq!(tags.iter().filter(|tag| **tag == "0x1039").count(), 1, "{tags:?}");
-    assert_eq!(message["properties"].as_array().unwrap().iter().find(|p| p["tag"] == "0x1039").unwrap()["value"], "<original@example.invalid>");
+    let tags: Vec<&str> = message["properties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["tag"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        tags.iter().filter(|tag| **tag == "0x1039").count(),
+        1,
+        "{tags:?}"
+    );
+    assert_eq!(
+        message["properties"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["tag"] == "0x1039")
+            .unwrap()["value"],
+        "<original@example.invalid>"
+    );
 }
 
 #[test]
 fn huge_keywords_header_is_fast() {
     let keywords: Vec<String> = (0..200_000).map(|n| format!("k{n}")).collect();
-    let raw = SIMPLE.replace("Subject:", &format!("Keywords: {}\r\nSubject:", keywords.join(", ")));
+    let raw = SIMPLE.replace(
+        "Subject:",
+        &format!("Keywords: {}\r\nSubject:", keywords.join(", ")),
+    );
     let start = std::time::Instant::now();
     let (message, _) = map(&raw);
     assert_eq!(message["categories"].as_array().unwrap().len(), 200_000);
-    assert!(start.elapsed() < std::time::Duration::from_secs(2), "{:?}", start.elapsed());
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(2),
+        "{:?}",
+        start.elapsed()
+    );
 }

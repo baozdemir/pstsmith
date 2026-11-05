@@ -66,27 +66,53 @@ impl Converter {
     /// # Errors
     ///
     /// As [`create`](Converter::create).
-    pub fn create_in(output: Output, options: &ManifestOptions, temp_dir: &Path) -> Result<Self, ConvertError> {
+    pub fn create_in(
+        output: Output,
+        options: &ManifestOptions,
+        temp_dir: &Path,
+    ) -> Result<Self, ConvertError> {
         let path = match &output {
             Output::File(path) | Output::Directory(path) => path,
         };
         if path.exists() {
-            return Err(error("output-exists", 4, "output path already exists; the caller owns a fresh temporary path"));
+            return Err(error(
+                "output-exists",
+                4,
+                "output path already exists; the caller owns a fresh temporary path",
+            ));
         }
         if options.excluded.as_ref().is_some_and(|path| path.exists()) {
-            return Err(error("output-exists", 4, "exclusion record path already exists; the caller owns a fresh temporary path"));
+            return Err(error(
+                "output-exists",
+                4,
+                "exclusion record path already exists; the caller owns a fresh temporary path",
+            ));
         }
         // Found now, not after the whole input is staged.
-        for (target, what) in std::iter::once((path, "output")).chain(options.excluded.as_ref().map(|path| (path, "exclusion record"))) {
-            if let Some(parent) = target.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+        for (target, what) in std::iter::once((path, "output")).chain(
+            options
+                .excluded
+                .as_ref()
+                .map(|path| (path, "exclusion record")),
+        ) {
+            if let Some(parent) = target
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+            {
                 let problem = match fs::metadata(parent) {
                     Ok(metadata) if metadata.is_dir() => None,
                     Ok(_) => Some("is not a directory".to_string()),
-                    Err(e) if e.kind() == io::ErrorKind::NotFound => Some("does not exist".to_string()),
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                        Some("does not exist".to_string())
+                    }
                     Err(e) => Some(format!("cannot be reached: {e}")),
                 };
                 if let Some(problem) = problem {
-                    return Err(error("io", 5, format!("the {what}'s directory {} {problem}", parent.display())));
+                    return Err(error(
+                        "io",
+                        5,
+                        format!("the {what}'s directory {} {problem}", parent.display()),
+                    ));
                 }
             }
         }
@@ -125,7 +151,9 @@ impl Converter {
 
     fn cancelled(&self) -> Result<(), ConvertError> {
         match &self.cancel {
-            Some(flag) if flag.load(Ordering::SeqCst) => Err(error("interrupted", 130, "the conversion was stopped")),
+            Some(flag) if flag.load(Ordering::SeqCst) => {
+                Err(error("interrupted", 130, "the conversion was stopped"))
+            }
             _ => Ok(()),
         }
     }
@@ -147,32 +175,52 @@ impl Converter {
     /// `input-unreadable` (exit 2) when the input cannot be read; `input-unsupported` (exit 2) for a PST file;
     /// `interrupted` once the cancel flag is set; `io` when staging fails.
     pub fn add_path(&mut self, input: &Path) -> Result<(), ConvertError> {
-        let metadata = fs::metadata(input).map_err(|e| error("input-unreadable", 2, format!("{}: {e}", input.display())))?;
+        let metadata = fs::metadata(input)
+            .map_err(|e| error("input-unreadable", 2, format!("{}: {e}", input.display())))?;
         // An input such as ".", ".." or "/" has no name of its own: the directory it stands for gives it.
         let name = real_name(input).unwrap_or_else(|| "Imported".to_string());
         if metadata.is_dir() {
             // A Thunderbird `Name.sbd` or Apple Mail `Name.mbox` directory given on its own is named `Name` (its
             // mailboxes become folders at the top, as in any directory; Apple Mail's `mbox` file is the folder `Name`).
-            let name = name.strip_suffix(".sbd").or_else(|| name.strip_suffix(".mbox")).filter(|stem| !stem.is_empty()).unwrap_or(&name).to_string();
+            let name = name
+                .strip_suffix(".sbd")
+                .or_else(|| name.strip_suffix(".mbox"))
+                .filter(|stem| !stem.is_empty())
+                .unwrap_or(&name)
+                .to_string();
             if is_maildir(input) {
                 self.add_maildir(input, &name, &["Inbox".to_string()], &[])
             } else {
                 self.walk(input, &name, &[], &name)
             }
-        } else if metadata.len() == 0 && (apple_mailbox(input).is_some() || input.with_file_name(format!("{name}.msf")).is_file()) {
+        } else if metadata.len() == 0
+            && (apple_mailbox(input).is_some()
+                || input.with_file_name(format!("{name}.msf")).is_file())
+        {
             // An empty mailbox is an empty folder, as when its directory is walked: Apple Mail's `Name.mbox/mbox`,
             // Thunderbird's file beside its index.
             let folder = vec![apple_mailbox(input).unwrap_or_else(|| mbox_folder_name(&name))];
             self.add_mbox(input, &name, &folder, false)
         } else if is_pst(input).map_err(|e| unreadable(input, e))? {
-            Err(error("input-unsupported", 2, format!("{}: a PST file is not mail input; pstsmith writes PST files from mail", input.display())))
+            Err(error(
+                "input-unsupported",
+                2,
+                format!(
+                    "{}: a PST file is not mail input; pstsmith writes PST files from mail",
+                    input.display()
+                ),
+            ))
         } else if is_mbox(input).map_err(|e| unreadable(input, e))? {
             // Apple Mail's `Name.mbox/mbox` is the folder `Name`, as when its directory is walked.
             let folder = vec![apple_mailbox(input).unwrap_or_else(|| mbox_folder_name(&name))];
             let routed = labels_route(input);
             self.add_mbox(input, &name, &folder, routed)
         } else {
-            let parent = input.canonicalize().ok().and_then(|path| path.parent().map(file_name)).filter(|name| !name.is_empty());
+            let parent = input
+                .canonicalize()
+                .ok()
+                .and_then(|path| path.parent().map(file_name))
+                .filter(|name| !name.is_empty());
             let folder = vec![parent.unwrap_or_else(|| "Imported".to_string())];
             let raw = fs::read(input).map_err(|e| unreadable(input, e))?;
             self.add_message(&raw, &name, &folder, None, None, false)
@@ -187,7 +235,11 @@ impl Converter {
     /// staging fails.
     pub fn add_eml(&mut self, folder: &[&str], raw: &[u8]) -> Result<(), ConvertError> {
         if folder.is_empty() || folder.iter().any(|name| name.is_empty()) {
-            return Err(error("invalid-input", 2, "folder must be a non-empty list of non-empty names"));
+            return Err(error(
+                "invalid-input",
+                2,
+                "folder must be a non-empty list of non-empty names",
+            ));
         }
         let folder: Vec<String> = folder.iter().map(|name| name.to_string()).collect();
         let container = folder.join("/");
@@ -204,24 +256,49 @@ impl Converter {
         self.cancelled()?;
         self.items.flush().map_err(io_error)?;
         if self.folders.is_empty() {
-            return Err(error("empty-selection", 2, "no message or mail folder found in the inputs"));
+            return Err(error(
+                "empty-selection",
+                2,
+                "no message or mail folder found in the inputs",
+            ));
         }
         if self.expunged > 0 {
-            let (count, verb) = if self.expunged == 1 { ("1 message".to_string(), "was") } else { (format!("{} messages", self.expunged), "were") };
-            self.warnings.push(format!("{count} deleted in Thunderbird but not yet compacted {verb} not converted"));
+            let (count, verb) = if self.expunged == 1 {
+                ("1 message".to_string(), "was")
+            } else {
+                (format!("{} messages", self.expunged), "were")
+            };
+            self.warnings.push(format!(
+                "{count} deleted in Thunderbird but not yet compacted {verb} not converted"
+            ));
         }
         if self.linked_directories > 0 {
-            let (count, verb) =
-                if self.linked_directories == 1 { ("1 symbolic link".to_string(), "was") } else { (format!("{} symbolic links", self.linked_directories), "were") };
-            self.warnings.push(format!("{count} to a directory {verb} not followed"));
+            let (count, verb) = if self.linked_directories == 1 {
+                ("1 symbolic link".to_string(), "was")
+            } else {
+                (
+                    format!("{} symbolic links", self.linked_directories),
+                    "were",
+                )
+            };
+            self.warnings
+                .push(format!("{count} to a directory {verb} not followed"));
         }
         if self.skipped_files > 0 {
-            let (count, verb) = if self.skipped_files == 1 { ("1 file that is".to_string(), "was") } else { (format!("{} files that are", self.skipped_files), "were") };
-            self.warnings.push(format!("{count} not mail {verb} skipped"));
+            let (count, verb) = if self.skipped_files == 1 {
+                ("1 file that is".to_string(), "was")
+            } else {
+                (format!("{} files that are", self.skipped_files), "were")
+            };
+            self.warnings
+                .push(format!("{count} not mail {verb} skipped"));
         }
         let mut by_case: BTreeMap<Vec<String>, Vec<&Vec<String>>> = BTreeMap::new();
         for folder in &self.folders {
-            by_case.entry(folder.iter().map(|name| name.to_lowercase()).collect()).or_default().push(folder);
+            by_case
+                .entry(folder.iter().map(|name| name.to_lowercase()).collect())
+                .or_default()
+                .push(folder);
         }
         for variants in by_case.values().filter(|variants| variants.len() > 1) {
             let names: Vec<String> = variants.iter().map(|path| path.join("/")).collect();
@@ -238,29 +315,66 @@ impl Converter {
             for folder in &self.folders {
                 writeln!(out, "{}", json!({ "folder_path": folder }))?;
             }
-            io::copy(&mut File::open(self.staging.dir.join("items.jsonl"))?, &mut out)?;
+            io::copy(
+                &mut File::open(self.staging.dir.join("items.jsonl"))?,
+                &mut out,
+            )?;
             out.flush()
         };
         write().map_err(io_error)?;
-        let report = convert_manifest_until(&manifest, &self.output, &self.options, self.cancel.clone())?;
-        Ok(Report { warnings: std::mem::take(&mut self.warnings), ..report })
+        let report =
+            convert_manifest_until(&manifest, &self.output, &self.options, self.cancel.clone())?;
+        Ok(Report {
+            warnings: std::mem::take(&mut self.warnings),
+            ..report
+        })
     }
 
-    fn add_message(&mut self, raw: &[u8], container: &str, folder: &[String], mbox_date: Option<i64>, seen: Option<bool>, draft: bool) -> Result<(), ConvertError> {
+    fn add_message(
+        &mut self,
+        raw: &[u8],
+        container: &str,
+        folder: &[String],
+        mbox_date: Option<i64>,
+        seen: Option<bool>,
+        draft: bool,
+    ) -> Result<(), ConvertError> {
         self.add_routed(raw, container, folder, mbox_date, seen, draft, true)
     }
 
     /// As `add_message`; `routed` false keeps the message in `folder` whatever its Gmail labels (its labels that are not
     /// system folders still become categories, and Drafts and Unread still set its state).
     #[allow(clippy::too_many_arguments)]
-    fn add_routed(&mut self, raw: &[u8], container: &str, folder: &[String], mbox_date: Option<i64>, seen: Option<bool>, draft: bool, routed: bool) -> Result<(), ConvertError> {
+    fn add_routed(
+        &mut self,
+        raw: &[u8],
+        container: &str,
+        folder: &[String],
+        mbox_date: Option<i64>,
+        seen: Option<bool>,
+        draft: bool,
+        routed: bool,
+    ) -> Result<(), ConvertError> {
         self.cancelled()?;
         let ordinal = self.ordinals.entry(container.to_string()).or_insert(0);
         *ordinal += 1;
-        let origin = Origin { container: container.to_string(), ordinal: *ordinal, mbox_date, seen, draft };
+        let origin = Origin {
+            container: container.to_string(),
+            ordinal: *ordinal,
+            mbox_date,
+            seen,
+            draft,
+        };
         let item_key = format!("{container}#{}", origin.ordinal);
-        let MailItem { message, folder: label_folder, warnings } = message_from_mime(raw, &origin, &mut self.staging).map_err(io_error)?;
-        let folder = label_folder.filter(|_| routed).map(|name| vec![name]).unwrap_or_else(|| folder.to_vec());
+        let MailItem {
+            message,
+            folder: label_folder,
+            warnings,
+        } = message_from_mime(raw, &origin, &mut self.staging).map_err(io_error)?;
+        let folder = label_folder
+            .filter(|_| routed)
+            .map(|name| vec![name])
+            .unwrap_or_else(|| folder.to_vec());
         for depth in 1..=folder.len() {
             self.folders.insert(folder[..depth].to_vec());
         }
@@ -271,7 +385,11 @@ impl Converter {
         serde_json::to_writer(&mut self.items, &item).map_err(|e| io_error(e.into()))?;
         self.items.write_all(b"\n").map_err(io_error)?;
         self.count += 1;
-        self.warnings.extend(warnings.into_iter().map(|warning| format!("{item_key}: {warning}")));
+        self.warnings.extend(
+            warnings
+                .into_iter()
+                .map(|warning| format!("{item_key}: {warning}")),
+        );
         Ok(())
     }
 
@@ -279,7 +397,13 @@ impl Converter {
     /// MBOX whose every message has a label adds no folder of its own (Google Takeout's "All mail Including Spam and
     /// Trash"). An MBOX without a message is a folder still (Thunderbird keeps an empty folder as an empty file, or one
     /// of deleted messages only).
-    fn add_mbox(&mut self, path: &Path, container: &str, folder: &[String], routed: bool) -> Result<(), ConvertError> {
+    fn add_mbox(
+        &mut self,
+        path: &Path,
+        container: &str,
+        folder: &[String],
+        routed: bool,
+    ) -> Result<(), ConvertError> {
         let before = self.count;
         if !routed {
             for depth in 1..=folder.len() {
@@ -287,7 +411,13 @@ impl Converter {
             }
         }
         let file = File::open(path).map_err(|e| unreadable(path, e))?;
-        let mut entries = MboxEntries { reader: BufReader::new(file), line: Vec::new(), ahead: Vec::new(), pending: None, first: true };
+        let mut entries = MboxEntries {
+            reader: BufReader::new(file),
+            line: Vec::new(),
+            ahead: Vec::new(),
+            pending: None,
+            first: true,
+        };
         while let Some(entry) = entries.next_entry().map_err(|e| unreadable(path, e))? {
             let (raw, date) = entry;
             let raw = without_separator_line(&raw);
@@ -307,7 +437,13 @@ impl Converter {
 
     /// A Maildir: `cur` and `new` in name order (new messages are unseen), then its Maildir++ folders `.A.B`, their
     /// names decoded from modified UTF-7. A symbolic link among the folders is not followed and is counted.
-    fn add_maildir(&mut self, dir: &Path, container: &str, folder: &[String], prefix: &[String]) -> Result<(), ConvertError> {
+    fn add_maildir(
+        &mut self,
+        dir: &Path,
+        container: &str,
+        folder: &[String],
+        prefix: &[String],
+    ) -> Result<(), ConvertError> {
         self.folders.insert(folder.to_vec());
         for depth in 1..folder.len() {
             self.folders.insert(folder[..depth].to_vec());
@@ -319,22 +455,43 @@ impl Converter {
                 if !entry.is_file() || name.starts_with('.') {
                     continue;
                 }
-                let flags = MAILDIR_INFO.iter().find_map(|info| name.split_once(info).map(|(_, flags)| flags.to_string()));
-                let seen = sub == "cur" && flags.as_deref().is_some_and(|flags| flags.contains('S'));
+                let flags = MAILDIR_INFO
+                    .iter()
+                    .find_map(|info| name.split_once(info).map(|(_, flags)| flags.to_string()));
+                let seen =
+                    sub == "cur" && flags.as_deref().is_some_and(|flags| flags.contains('S'));
                 let draft = flags.as_deref().is_some_and(|flags| flags.contains('D'));
                 let raw = fs::read(&entry).map_err(|e| unreadable(&entry, e))?;
-                self.add_message(&raw, &format!("{container}/{sub}"), folder, None, Some(seen), draft)?;
+                self.add_message(
+                    &raw,
+                    &format!("{container}/{sub}"),
+                    folder,
+                    None,
+                    Some(seen),
+                    draft,
+                )?;
             }
         }
         for entry in sorted_entries(dir).map_err(|e| unreadable(dir, e))? {
             let name = file_name(&entry);
-            if let Some(sub) = name.strip_prefix('.').filter(|sub| !sub.is_empty() && is_maildir(&entry)) {
-                if fs::symlink_metadata(&entry).map_err(|e| unreadable(&entry, e))?.file_type().is_symlink() {
+            if let Some(sub) = name
+                .strip_prefix('.')
+                .filter(|sub| !sub.is_empty() && is_maildir(&entry))
+            {
+                if fs::symlink_metadata(&entry)
+                    .map_err(|e| unreadable(&entry, e))?
+                    .file_type()
+                    .is_symlink()
+                {
                     self.linked_directories += 1;
                     continue;
                 }
                 let mut path = prefix.to_vec();
-                path.extend(sub.split('.').filter(|part| !part.is_empty()).map(|part| modified_utf7(part).unwrap_or_else(|| part.to_string())));
+                path.extend(
+                    sub.split('.')
+                        .filter(|part| !part.is_empty())
+                        .map(|part| modified_utf7(part).unwrap_or_else(|| part.to_string())),
+                );
                 if path.len() > prefix.len() {
                     self.add_maildir(&entry, &format!("{container}/{name}"), &path, &path)?;
                 }
@@ -345,13 +502,22 @@ impl Converter {
 
     /// A directory that is not a Maildir: its entries in name order. A symbolic link to a file is read; one to a
     /// directory is not followed (it could lead back up the tree) and is counted.
-    fn walk(&mut self, dir: &Path, container: &str, folder: &[String], top: &str) -> Result<(), ConvertError> {
+    fn walk(
+        &mut self,
+        dir: &Path,
+        container: &str,
+        folder: &[String],
+        top: &str,
+    ) -> Result<(), ConvertError> {
         for entry in sorted_entries(dir).map_err(|e| unreadable(dir, e))? {
             let name = file_name(&entry);
             if name.starts_with('.') || companion_file(&name) {
                 continue;
             }
-            let link = fs::symlink_metadata(&entry).map_err(|e| unreadable(&entry, e))?.file_type().is_symlink();
+            let link = fs::symlink_metadata(&entry)
+                .map_err(|e| unreadable(&entry, e))?
+                .file_type()
+                .is_symlink();
             let entry_container = format!("{container}/{name}");
             let mut sub_folder = folder.to_vec();
             if entry.is_dir() {
@@ -359,7 +525,11 @@ impl Converter {
                     self.linked_directories += 1;
                     continue;
                 }
-                let stem = name.strip_suffix(".sbd").or_else(|| name.strip_suffix(".mbox")).unwrap_or(&name).to_string();
+                let stem = name
+                    .strip_suffix(".sbd")
+                    .or_else(|| name.strip_suffix(".mbox"))
+                    .unwrap_or(&name)
+                    .to_string();
                 sub_folder.push(stem);
                 if is_maildir(&entry) {
                     self.add_maildir(&entry, &entry_container, &sub_folder, &sub_folder)?;
@@ -367,16 +537,26 @@ impl Converter {
                     self.walk(&entry, &entry_container, &sub_folder, top)?;
                 }
             } else if entry.is_file() {
-                let here = if folder.is_empty() { vec![top.to_string()] } else { folder.to_vec() };
+                let here = if folder.is_empty() {
+                    vec![top.to_string()]
+                } else {
+                    folder.to_vec()
+                };
                 let empty = fs::metadata(&entry).is_ok_and(|metadata| metadata.len() == 0);
                 // An empty mailbox: Thunderbird's file beside its index, Apple Mail's `Name.mbox/mbox`.
-                let empty_mail_folder = empty && (dir.join(format!("{name}.msf")).is_file() || apple_mailbox(&entry).is_some());
+                let empty_mail_folder = empty
+                    && (dir.join(format!("{name}.msf")).is_file()
+                        || apple_mailbox(&entry).is_some());
                 if name.to_ascii_lowercase().ends_with(".eml") {
                     let raw = fs::read(&entry).map_err(|e| unreadable(&entry, e))?;
                     self.add_message(&raw, &entry_container, &here, None, None, false)?;
                 } else if empty_mail_folder || is_mbox(&entry).map_err(|e| unreadable(&entry, e))? {
                     // Apple Mail keeps a mailbox as `Name.mbox/mbox`: the folder is the directory's.
-                    let target = if name == "mbox" { here } else { [folder, &[mbox_folder_name(&name)][..]].concat() };
+                    let target = if name == "mbox" {
+                        here
+                    } else {
+                        [folder, &[mbox_folder_name(&name)][..]].concat()
+                    };
                     let routed = labels_route(&entry);
                     self.add_mbox(&entry, &entry_container, &target, routed)?;
                 } else {
@@ -424,7 +604,9 @@ fn modified_utf7(name: &str) -> Option<String> {
             }
         }
         // What is left must be fewer than 6 bits, all zero; printable ASCII is never encoded.
-        let text = String::from_utf16(&units).ok().filter(|_| count < 6 && bits == 0)?;
+        let text = String::from_utf16(&units)
+            .ok()
+            .filter(|_| count < 6 && bits == 0)?;
         if text.is_empty() || text.chars().any(|c| (' '..='~').contains(&c)) {
             return None;
         }
@@ -475,9 +657,15 @@ impl<R: BufRead> MboxEntries<R> {
                     continue;
                 }
             }
-            let date_style = self.line.starts_with(b"From ").then(|| date_header_style(&self.line)).flatten();
+            let date_style = self
+                .line
+                .starts_with(b"From ")
+                .then(|| date_header_style(&self.line))
+                .flatten();
             if self.line.starts_with(b"From ")
-                && (self.first || from_line_date(&self.line).is_some() || (date_style.is_some() && self.header_follows_a_blank_line()?))
+                && (self.first
+                    || from_line_date(&self.line).is_some()
+                    || (date_style.is_some() && self.header_follows_a_blank_line()?))
             {
                 self.first = false;
                 let date = from_line_date(&self.line).flatten().or(date_style);
@@ -489,7 +677,10 @@ impl<R: BufRead> MboxEntries<R> {
             self.first = false;
             if let Some((contents, _)) = self.pending.as_mut() {
                 let line = &self.line;
-                let quoted = line.iter().position(|byte| *byte != b'>').is_some_and(|at| at > 0 && line[at..].starts_with(b"From "));
+                let quoted = line
+                    .iter()
+                    .position(|byte| *byte != b'>')
+                    .is_some_and(|at| at > 0 && line[at..].starts_with(b"From "));
                 contents.extend_from_slice(if quoted { &line[1..] } else { line });
             }
         }
@@ -499,14 +690,22 @@ impl<R: BufRead> MboxEntries<R> {
     /// line after it is a header field. That line is read ahead (here `ahead` is always empty: the line in hand is the
     /// one read ahead before, if any) and is taken next.
     fn header_follows_a_blank_line(&mut self) -> io::Result<bool> {
-        let blank_before = self.pending.as_ref().is_some_and(|(contents, _)| contents.ends_with(b"\n\n") || contents.ends_with(b"\n\r\n"));
+        let blank_before = self.pending.as_ref().is_some_and(|(contents, _)| {
+            contents.ends_with(b"\n\n") || contents.ends_with(b"\n\r\n")
+        });
         if !blank_before {
             return Ok(false);
         }
         self.reader.read_until(b'\n', &mut self.ahead)?;
         // RFC 5322 2.2: a field name is printable US-ASCII without the colon, then the colon.
-        let name = self.ahead.iter().position(|byte| *byte == b':').map(|at| &self.ahead[..at]);
-        Ok(name.is_some_and(|name| !name.is_empty() && name.iter().all(|byte| (33..=126).contains(byte))))
+        let name = self
+            .ahead
+            .iter()
+            .position(|byte| *byte == b':')
+            .map(|at| &self.ahead[..at]);
+        Ok(name.is_some_and(|name| {
+            !name.is_empty() && name.iter().all(|byte| (33..=126).contains(byte))
+        }))
     }
 }
 
@@ -516,7 +715,11 @@ impl<R: BufRead> MboxEntries<R> {
 fn from_line_words(line: &[u8]) -> Option<Vec<String>> {
     let text = String::from_utf8_lossy(line);
     let rest = text.trim_end_matches(['\r', '\n']).strip_prefix("From ")?;
-    let mut words: Vec<String> = rest.split([' ', '\t']).filter(|word| !word.is_empty()).map(str::to_string).collect();
+    let mut words: Vec<String> = rest
+        .split([' ', '\t'])
+        .filter(|word| !word.is_empty())
+        .map(str::to_string)
+        .collect();
     if words.is_empty() {
         return None;
     }
@@ -535,7 +738,10 @@ fn ascii_digits(word: &str, lengths: std::ops::RangeInclusive<usize>) -> bool {
 /// `h:mm`, `hh:mm` or `hh:mm:ss`, as (hour, minute, second); ranges are checked with the date.
 fn clock(word: &str) -> Option<(u8, u8, u8)> {
     let parts: Vec<&str> = word.split(':').collect();
-    if !(2..=3).contains(&parts.len()) || !ascii_digits(parts[0], 1..=2) || parts[1..].iter().any(|part| !ascii_digits(part, 2..=2)) {
+    if !(2..=3).contains(&parts.len())
+        || !ascii_digits(parts[0], 1..=2)
+        || parts[1..].iter().any(|part| !ascii_digits(part, 2..=2))
+    {
         return None;
     }
     let second = parts.get(2).map_or(Some(0), |part| part.parse().ok())?;
@@ -550,11 +756,19 @@ fn is_month(word: &str) -> bool {
 /// 5322 4.3: UT, GMT, Z and the North American names have their offsets; any other name is taken as UTC). As (west of
 /// GMT, hours, minutes).
 fn zone(word: &str) -> Option<(bool, u8, u8)> {
-    if word.len() == 5 && (word.starts_with('+') || word.starts_with('-')) && ascii_digits(&word[1..], 4..=4) {
+    if word.len() == 5
+        && (word.starts_with('+') || word.starts_with('-'))
+        && ascii_digits(&word[1..], 4..=4)
+    {
         let (hours, minutes) = (word[1..3].parse().ok()?, word[3..].parse().ok()?);
         return (hours <= 23 && minutes <= 59).then_some((word.starts_with('-'), hours, minutes));
     }
-    if !(1..=5).contains(&word.len()) || !word.bytes().all(|byte| byte.is_ascii_uppercase()) || is_month(word) || word == "AM" || word == "PM" {
+    if !(1..=5).contains(&word.len())
+        || !word.bytes().all(|byte| byte.is_ascii_uppercase())
+        || is_month(word)
+        || word == "AM"
+        || word == "PM"
+    {
         return None;
     }
     Some(match word {
@@ -570,7 +784,9 @@ fn zone(word: &str) -> Option<(bool, u8, u8)> {
     })
 }
 
-const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const MONTHS: [&str; 12] = [
+    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+];
 
 /// A zone word between the time and the year, as System V's `%Z` writes it: a zone, tzdata's numeric abbreviation
 /// `+hh`/`-hh` ("+03"), or 2 to 5 letters starting with a capital, with two capitals at least, that are not a month
@@ -579,7 +795,10 @@ fn zone_abbreviation(word: &str) -> Option<(bool, u8, u8)> {
     if let Some(found) = zone(word) {
         return Some(found);
     }
-    if word.len() == 3 && (word.starts_with('+') || word.starts_with('-')) && ascii_digits(&word[1..], 2..=2) {
+    if word.len() == 3
+        && (word.starts_with('+') || word.starts_with('-'))
+        && ascii_digits(&word[1..], 2..=2)
+    {
         let hours: u8 = word[1..].parse().ok()?;
         return (hours <= 23).then_some((word.starts_with('-'), hours, 0));
     }
@@ -591,13 +810,42 @@ fn zone_abbreviation(word: &str) -> Option<(bool, u8, u8)> {
 }
 
 /// The date, when it exists (a real calendar day, year 1900 to 3000, hours to 23, minutes and seconds to 59).
-fn timestamp(year: u16, month: u8, day: u8, (hour, minute, second): (u8, u8, u8), (west, tz_hour, tz_minute): (bool, u8, u8)) -> Option<i64> {
+fn timestamp(
+    year: u16,
+    month: u8,
+    day: u8,
+    (hour, minute, second): (u8, u8, u8),
+    (west, tz_hour, tz_minute): (bool, u8, u8),
+) -> Option<i64> {
     let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    let days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let days = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     if !(1..=12).contains(&month) || day == 0 || day > days[usize::from(month) - 1] {
         return None;
     }
-    let date = mail_parser::DateTime { year, month, day, hour, minute, second, tz_before_gmt: west, tz_hour, tz_minute };
+    let date = mail_parser::DateTime {
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        tz_before_gmt: west,
+        tz_hour,
+        tz_minute,
+    };
     date.is_valid().then(|| date.to_timestamp())
 }
 
@@ -613,17 +861,37 @@ fn date_header_style(line: &[u8]) -> Option<i64> {
         words.truncate(at);
     }
     const DAYS: [&str; 7] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-    let weekday = words.first().is_some_and(|word| DAYS.contains(&word.strip_suffix(',').unwrap_or(word).to_ascii_lowercase().as_str()));
+    let weekday = words.first().is_some_and(|word| {
+        DAYS.contains(
+            &word
+                .strip_suffix(',')
+                .unwrap_or(word)
+                .to_ascii_lowercase()
+                .as_str(),
+        )
+    });
     let rest = &words[usize::from(weekday)..];
-    if !(4..=5).contains(&rest.len()) || !ascii_digits(&rest[0], 1..=2) || !ascii_digits(&rest[2], 4..=4) {
+    if !(4..=5).contains(&rest.len())
+        || !ascii_digits(&rest[0], 1..=2)
+        || !ascii_digits(&rest[2], 4..=4)
+    {
         return None;
     }
-    let month = MONTHS.iter().position(|month| rest[1].eq_ignore_ascii_case(month))? as u8 + 1;
+    let month = MONTHS
+        .iter()
+        .position(|month| rest[1].eq_ignore_ascii_case(month))? as u8
+        + 1;
     let tz = match rest.get(4) {
         Some(word) => zone(word)?,
         None => (false, 0, 0),
     };
-    timestamp(rest[2].parse().ok()?, month, rest[0].parse().ok()?, clock(&rest[3])?, tz)
+    timestamp(
+        rest[2].parse().ok()?,
+        month,
+        rest[0].parse().ok()?,
+        clock(&rest[3])?,
+        tz,
+    )
 }
 
 /// An MBOX "From " line (asctime, as mail programs write it, with an English month name): `Some(date)` when the words
@@ -646,24 +914,48 @@ fn from_line_date(line: &[u8]) -> Option<Option<i64>> {
             words.pop();
         }
     }
-    let year: u16 = words.last().filter(|word| ascii_digits(word, 4..=4))?.parse().ok()?;
+    let year: u16 = words
+        .last()
+        .filter(|word| ascii_digits(word, 4..=4))?
+        .parse()
+        .ok()?;
     let before = &words[..words.len() - 1];
-    let zones = before.iter().rev().take_while(|word| clock(word).is_none() && zone_abbreviation(word).is_some()).count();
+    let zones = before
+        .iter()
+        .rev()
+        .take_while(|word| clock(word).is_none() && zone_abbreviation(word).is_some())
+        .count();
     if zones > 2 {
         return None;
     }
     let time = clock(before.get(before.len().checked_sub(zones + 1)?)?)?;
     let zone_words = &before[before.len() - zones..];
-    if let Some(word) = zone_words.iter().find(|word| word.starts_with('+') || word.starts_with('-')).or(zone_words.last()) {
+    if let Some(word) = zone_words
+        .iter()
+        .find(|word| word.starts_with('+') || word.starts_with('-'))
+        .or(zone_words.last())
+    {
         tz = zone_abbreviation(word).unwrap_or(tz);
     }
-    let month = words.iter().find_map(|word| MONTHS.iter().position(|month| word.eq_ignore_ascii_case(month)))?;
-    let day = words.iter().find(|word| ascii_digits(word, 1..=2)).and_then(|word| word.parse::<u8>().ok());
+    let month = words.iter().find_map(|word| {
+        MONTHS
+            .iter()
+            .position(|month| word.eq_ignore_ascii_case(month))
+    })?;
+    let day = words
+        .iter()
+        .find(|word| ascii_digits(word, 1..=2))
+        .and_then(|word| word.parse::<u8>().ok());
     Some(day.and_then(|day| timestamp(year, month as u8 + 1, day, time, tz)))
 }
 
 fn error(code: &'static str, exit_code: u8, detail: impl Into<String>) -> ConvertError {
-    ConvertError { code, exit_code, item_key: None, detail: detail.into() }
+    ConvertError {
+        code,
+        exit_code,
+        item_key: None,
+        detail: detail.into(),
+    }
 }
 
 fn io_error(e: io::Error) -> ConvertError {
@@ -678,22 +970,38 @@ fn unreadable(path: &Path, e: io::Error) -> ConvertError {
 fn real_name(path: &Path) -> Option<String> {
     Some(file_name(path))
         .filter(|name| !name.is_empty())
-        .or_else(|| path.canonicalize().ok().map(|path| file_name(&path)).filter(|name| !name.is_empty()))
+        .or_else(|| {
+            path.canonicalize()
+                .ok()
+                .map(|path| file_name(&path))
+                .filter(|name| !name.is_empty())
+        })
 }
 
 fn file_name(path: &Path) -> String {
-    path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default()
+    path.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 /// An MBOX file's folder: its name without `.mbox` or `.mbx`, in any case.
 fn mbox_folder_name(name: &str) -> String {
     let lower = name.to_ascii_lowercase();
-    let stem = [".mbox", ".mbx"].iter().find(|ext| lower.ends_with(*ext)).map_or(name, |ext| &name[..name.len() - ext.len()]);
-    if stem.is_empty() { name.to_string() } else { stem.to_string() }
+    let stem = [".mbox", ".mbx"]
+        .iter()
+        .find(|ext| lower.ends_with(*ext))
+        .map_or(name, |ext| &name[..name.len() - ext.len()]);
+    if stem.is_empty() {
+        name.to_string()
+    } else {
+        stem.to_string()
+    }
 }
 
 fn sorted_entries(dir: &Path) -> io::Result<Vec<PathBuf>> {
-    let mut entries = fs::read_dir(dir)?.map(|entry| entry.map(|entry| entry.path())).collect::<io::Result<Vec<_>>>()?;
+    let mut entries = fs::read_dir(dir)?
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<io::Result<Vec<_>>>()?;
     entries.sort();
     Ok(entries)
 }
@@ -707,18 +1015,31 @@ fn is_maildir(dir: &Path) -> bool {
 /// `.sbd` directory, Apple Mail's `Name.mbox/mbox`).
 fn labels_route(path: &Path) -> bool {
     let name = file_name(path);
-    !(path.with_file_name(format!("{name}.msf")).is_file() || parent_name(path).ends_with(".sbd") || apple_mailbox(path).is_some())
+    !(path.with_file_name(format!("{name}.msf")).is_file()
+        || parent_name(path).ends_with(".sbd")
+        || apple_mailbox(path).is_some())
 }
 
 /// The name of a path's directory; the parent of a bare "mbox" is the empty path, which stands for the current one.
 fn parent_name(path: &Path) -> String {
-    path.parent().map(|parent| if parent.as_os_str().is_empty() { Path::new(".") } else { parent }).and_then(real_name).unwrap_or_default()
+    path.parent()
+        .map(|parent| {
+            if parent.as_os_str().is_empty() {
+                Path::new(".")
+            } else {
+                parent
+            }
+        })
+        .and_then(real_name)
+        .unwrap_or_default()
 }
 
 /// For Apple Mail's `Name.mbox/mbox`, the mailbox's name `Name`.
 fn apple_mailbox(path: &Path) -> Option<String> {
     let parent = parent_name(path);
-    let stem = parent.strip_suffix(".mbox").filter(|stem| !stem.is_empty())?;
+    let stem = parent
+        .strip_suffix(".mbox")
+        .filter(|stem| !stem.is_empty())?;
     (file_name(path) == "mbox").then(|| stem.to_string())
 }
 
@@ -734,7 +1055,10 @@ fn is_mbox(path: &Path) -> io::Result<bool> {
     let mut start = Vec::with_capacity(4096);
     File::open(path)?.take(4096).read_to_end(&mut start)?;
     let start = start.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&start);
-    let first = start.iter().position(|byte| *byte != b'\r' && *byte != b'\n').map_or(&[][..], |at| &start[at..]);
+    let first = start
+        .iter()
+        .position(|byte| *byte != b'\r' && *byte != b'\n')
+        .map_or(&[][..], |at| &start[at..]);
     Ok(first.starts_with(b"From "))
 }
 
@@ -757,8 +1081,15 @@ fn thunderbird_expunged(raw: &[u8]) -> bool {
         if line.is_empty() {
             return false;
         }
-        if let Some(value) = line.get(..17).filter(|name| name.eq_ignore_ascii_case(b"X-Mozilla-Status:")).map(|_| &line[17..]) {
-            return std::str::from_utf8(value).ok().and_then(|value| u32::from_str_radix(value.trim(), 16).ok()).is_some_and(|status| status & 0x0008 != 0);
+        if let Some(value) = line
+            .get(..17)
+            .filter(|name| name.eq_ignore_ascii_case(b"X-Mozilla-Status:"))
+            .map(|_| &line[17..])
+        {
+            return std::str::from_utf8(value)
+                .ok()
+                .and_then(|value| u32::from_str_radix(value.trim(), 16).ok())
+                .is_some_and(|status| status & 0x0008 != 0);
         }
     }
     false
@@ -775,8 +1106,15 @@ impl Staging {
     fn create(parent: &Path) -> io::Result<Self> {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         loop {
-            let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-            let dir = parent.join(format!("pstsmith-{}-{stamp}-{}", std::process::id(), COUNTER.fetch_add(1, Ordering::Relaxed)));
+            let stamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let dir = parent.join(format!(
+                "pstsmith-{}-{stamp}-{}",
+                std::process::id(),
+                COUNTER.fetch_add(1, Ordering::Relaxed)
+            ));
             // The staged messages are private mail: only the user may read them (0700 on Unix).
             let mut builder = fs::DirBuilder::new();
             #[cfg(unix)]
@@ -807,8 +1145,17 @@ impl Stage for Staging {
         let name = format!("a{}", self.next);
         self.private_file(&name)?.write_all(data)?;
         let path = self.dir.join(name);
-        let path = path.into_os_string().into_string().map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "the temporary directory's path is not UTF-8"))?;
-        Ok(Staged { path, size: data.len() as u64, sha256: sha256_hex(data) })
+        let path = path.into_os_string().into_string().map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "the temporary directory's path is not UTF-8",
+            )
+        })?;
+        Ok(Staged {
+            path,
+            size: data.len() as u64,
+            sha256: sha256_hex(data),
+        })
     }
 }
 
@@ -824,8 +1171,14 @@ mod tests {
 
     /// The cases the oracle's self-test (`tests/oracle/compare_mail.py`, `_date_rule_self_test`) holds too.
     const DATE_HEADER_LINES: [(&str, bool); 19] = [
-        ("From a@example.invalid Sat, 01 Jan 2024 11:00:00 +0000", true),
-        ("From a@example.invalid Mon, 1 Jan 2024 10:00:00 -0500", true),
+        (
+            "From a@example.invalid Sat, 01 Jan 2024 11:00:00 +0000",
+            true,
+        ),
+        (
+            "From a@example.invalid Mon, 1 Jan 2024 10:00:00 -0500",
+            true,
+        ),
         ("From a Sat, 01 Jan 2024 11:00:00", true),
         ("From a 1 Jan 2024 11:00 GMT", true),
         ("From a Sat, 01 Jan 2024 11:00:00 +0000 (UTC)", true),
@@ -899,31 +1252,75 @@ mod tests {
 
     #[test]
     fn date_header_style_reads_only_dates() {
-        assert_eq!(date_header_style(b"From a@example.invalid Sat, 01 Jan 2024 11:00:00 +0000\n"), Some(1_704_106_800));
-        assert_eq!(date_header_style(b"From a@example.invalid Mon, 1 Jan 2024 10:00:00 -0500\r\n"), Some(1_704_121_200));
-        assert_eq!(date_header_style(b"From a 1 Jan 2024 11:00 GMT\n"), Some(1_704_106_800));
+        assert_eq!(
+            date_header_style(b"From a@example.invalid Sat, 01 Jan 2024 11:00:00 +0000\n"),
+            Some(1_704_106_800)
+        );
+        assert_eq!(
+            date_header_style(b"From a@example.invalid Mon, 1 Jan 2024 10:00:00 -0500\r\n"),
+            Some(1_704_121_200)
+        );
+        assert_eq!(
+            date_header_style(b"From a 1 Jan 2024 11:00 GMT\n"),
+            Some(1_704_106_800)
+        );
         for (line, accepted) in DATE_HEADER_LINES {
-            assert_eq!(date_header_style(line.as_bytes()).is_some(), accepted, "{line:?}");
+            assert_eq!(
+                date_header_style(line.as_bytes()).is_some(),
+                accepted,
+                "{line:?}"
+            );
         }
     }
 
     #[test]
     fn from_line_dates() {
         let date = |line: &str| from_line_date(line.as_bytes());
-        assert_eq!(date("From a Mon Jan  1 10:00:00 2024\n"), Some(Some(1_704_103_200)));
-        assert_eq!(date("From a Mon Jan  1 10:00:00 2024 remote from host\n"), Some(Some(1_704_103_200)));
-        assert_eq!(from_line_date(b"From j\xfcrgen@example.invalid Mon Jan  1 10:00:00 2024\n"), Some(Some(1_704_103_200)));
+        assert_eq!(
+            date("From a Mon Jan  1 10:00:00 2024\n"),
+            Some(Some(1_704_103_200))
+        );
+        assert_eq!(
+            date("From a Mon Jan  1 10:00:00 2024 remote from host\n"),
+            Some(Some(1_704_103_200))
+        );
+        assert_eq!(
+            from_line_date(b"From j\xfcrgen@example.invalid Mon Jan  1 10:00:00 2024\n"),
+            Some(Some(1_704_103_200))
+        );
         // A zone after the year (UW c-client, Alpine) or before it (Google Takeout) gives the offset.
-        assert_eq!(date("From a Mon Jan  1 10:00:00 2024 +0000\n"), Some(Some(1_704_103_200)));
-        assert_eq!(date("From a Mon Jan  1 10:00:00 2024 -0500\n"), Some(Some(1_704_121_200)));
-        assert_eq!(date("From a Mon Jan 01 10:00:00 -0500 2024\n"), Some(Some(1_704_121_200)));
+        assert_eq!(
+            date("From a Mon Jan  1 10:00:00 2024 +0000\n"),
+            Some(Some(1_704_103_200))
+        );
+        assert_eq!(
+            date("From a Mon Jan  1 10:00:00 2024 -0500\n"),
+            Some(Some(1_704_121_200))
+        );
+        assert_eq!(
+            date("From a Mon Jan 01 10:00:00 -0500 2024\n"),
+            Some(Some(1_704_121_200))
+        );
         // A zone name just before the year (System V) gives its offset too.
-        assert_eq!(date("From a Mon Jan  1 10:00:00 PST 2024\n"), Some(Some(1_704_132_000)));
+        assert_eq!(
+            date("From a Mon Jan  1 10:00:00 PST 2024\n"),
+            Some(Some(1_704_132_000))
+        );
         // tzdata's "+03"; of two zone words, the numeric one gives the offset.
-        assert_eq!(date("From a Mon Jan  1 10:00:00 +03 2024\n"), Some(Some(1_704_092_400)));
-        assert_eq!(date("From a Mon Jan  1 10:00:00 +0100 CET 2024\n"), Some(Some(1_704_099_600)));
+        assert_eq!(
+            date("From a Mon Jan  1 10:00:00 +03 2024\n"),
+            Some(Some(1_704_092_400))
+        );
+        assert_eq!(
+            date("From a Mon Jan  1 10:00:00 +0100 CET 2024\n"),
+            Some(Some(1_704_099_600))
+        );
         for (line, accepted) in ASCTIME_LINES {
-            assert_eq!(from_line_date(line.as_bytes()).is_some(), accepted, "{line:?}");
+            assert_eq!(
+                from_line_date(line.as_bytes()).is_some(),
+                accepted,
+                "{line:?}"
+            );
         }
     }
 
@@ -932,26 +1329,50 @@ mod tests {
         let text = "From a Mon Jan  1 10:00:00 2024 +0000\nSubject: one\n\nbody\nFrom John Sat, 06 Jan 2024 11:00:00 +0000\n\n\
                     From a Mon Jan  1 11:00:00 2024 +0000\nSubject: two\n\nbody\n\n\
                     From a Mon, 1 Jan 2024 12:00:00 UTC\nSubject: three\n\nbody\n";
-        let mut entries = MboxEntries { reader: io::Cursor::new(text.as_bytes()), line: Vec::new(), ahead: Vec::new(), pending: None, first: true };
+        let mut entries = MboxEntries {
+            reader: io::Cursor::new(text.as_bytes()),
+            line: Vec::new(),
+            ahead: Vec::new(),
+            pending: None,
+            first: true,
+        };
         let mut dates = Vec::new();
         while let Some((raw, date)) = entries.next_entry().unwrap() {
-            assert!(raw.starts_with(b"Subject: "), "{:?}", String::from_utf8_lossy(&raw));
+            assert!(
+                raw.starts_with(b"Subject: "),
+                "{:?}",
+                String::from_utf8_lossy(&raw)
+            );
             dates.push(date);
         }
-        assert_eq!(dates, vec![Some(1_704_103_200), Some(1_704_106_800), Some(1_704_110_400)]);
+        assert_eq!(
+            dates,
+            vec![
+                Some(1_704_103_200),
+                Some(1_704_106_800),
+                Some(1_704_110_400)
+            ]
+        );
     }
 
     #[cfg(unix)]
     #[test]
     fn staging_is_private_to_the_user() {
         use std::os::unix::fs::PermissionsExt;
-        let parent = std::env::temp_dir().join(format!("pstsmith-staging-mode-{}", std::process::id()));
+        let parent =
+            std::env::temp_dir().join(format!("pstsmith-staging-mode-{}", std::process::id()));
         let _ = fs::remove_dir_all(&parent);
         fs::create_dir_all(&parent).unwrap();
         let mut staging = Staging::create(&parent).unwrap();
-        assert_eq!(fs::metadata(&staging.dir).unwrap().permissions().mode() & 0o777, 0o700);
+        assert_eq!(
+            fs::metadata(&staging.dir).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
         let staged = staging.stage(b"private mail").unwrap();
-        assert_eq!(fs::metadata(&staged.path).unwrap().permissions().mode() & 0o077, 0);
+        assert_eq!(
+            fs::metadata(&staged.path).unwrap().permissions().mode() & 0o077,
+            0
+        );
         drop(staging);
         fs::remove_dir_all(&parent).unwrap();
     }

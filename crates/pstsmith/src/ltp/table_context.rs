@@ -696,11 +696,7 @@ impl TableRowData {
                     match value {
                         0x00 => false,
                         0x01 => true,
-                        _ => {
-                            return Err(
-                                LtpError::InvalidTableColumnBooleanValue(value).into()
-                            )
-                        }
+                        _ => return Err(LtpError::InvalidTableColumnBooleanValue(value).into()),
                     },
                 ))))
             }
@@ -1026,7 +1022,9 @@ where
     ) -> io::Result<PropertyValue> {
         match value {
             TableRowColumnValue::Small(small) => Ok(small.clone()),
-            TableRowColumnValue::Heap(heap_id) if <u32 as From<super::heap::HeapId>>::from(*heap_id) == 0 => {
+            TableRowColumnValue::Heap(heap_id)
+                if <u32 as From<super::heap::HeapId>>::from(*heap_id) == 0 =>
+            {
                 Ok(super::prop_context::empty_heap_value(prop_type))
             }
             TableRowColumnValue::Heap(heap_id) => {

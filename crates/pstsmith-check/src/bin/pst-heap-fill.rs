@@ -4,7 +4,9 @@
 //!
 //!     pst-heap-fill FILE.pst
 fn main() {
-    let path = std::env::args().nth(1).expect("usage: pst-heap-fill FILE.pst");
+    let path = std::env::args()
+        .nth(1)
+        .expect("usage: pst-heap-fill FILE.pst");
     let heaps = match pstsmith::debug_heap_fill_levels(&path) {
         Ok(heaps) => heaps,
         Err(error) => {
@@ -14,6 +16,9 @@ fn main() {
     };
     for (nid, sub, pages, levels) in heaps {
         let hex: String = levels.iter().map(|byte| format!("{byte:02x}")).collect();
-        println!("{}", serde_json::json!({"nid": nid, "sub": sub, "pages": pages, "fill": hex}));
+        println!(
+            "{}",
+            serde_json::json!({"nid": nid, "sub": sub, "pages": pages, "fill": hex})
+        );
     }
 }

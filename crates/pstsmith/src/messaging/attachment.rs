@@ -301,18 +301,24 @@ where
                     let attachment_sub_nodes = attachment_node
                         .sub_node()
                         .ok_or(MessagingError::AttachmentSubNodeNotFound(sub_node))?;
-                    let block = block_btree.find_entry(file, attachment_sub_nodes.search_key(), &mut page_cache)?;
+                    let block = block_btree.find_entry(
+                        file,
+                        attachment_sub_nodes.search_key(),
+                        &mut page_cache,
+                    )?;
                     let tree = SubNodeTree::<Pst>::read(file, &block)?;
                     let entry = tree
                         .entries(file, &block_btree, &mut page_cache)?
                         .find(|entry| entry.node() == sub_node)
                         .ok_or(MessagingError::AttachmentSubNodeNotFound(sub_node))?;
-                    embedded = Some(<<Pst as PstFile>::NodeBTreeEntry as NodeBTreeEntryReadWrite>::new(
-                        entry.node(),
-                        entry.block(),
-                        entry.sub_node(),
-                        None,
-                    ));
+                    embedded = Some(
+                        <<Pst as PstFile>::NodeBTreeEntry as NodeBTreeEntryReadWrite>::new(
+                            entry.node(),
+                            entry.block(),
+                            entry.sub_node(),
+                            None,
+                        ),
+                    );
                     None
                 }
                 AttachmentMethod::Storage => {
@@ -354,7 +360,13 @@ where
             (properties, data)
         };
         let attached = match embedded {
-            Some(node) => Some(<<Pst as PstFile>::Message as MessageReadWrite<Pst>>::read_embedded(store.clone(), node, prop_ids)?),
+            Some(node) => Some(
+                <<Pst as PstFile>::Message as MessageReadWrite<Pst>>::read_embedded(
+                    store.clone(),
+                    node,
+                    prop_ids,
+                )?,
+            ),
             None => None,
         };
         if let Some(attached) = &attached {

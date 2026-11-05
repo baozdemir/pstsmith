@@ -65,7 +65,11 @@ fn main() -> io::Result<()> {
         search_key: None,
         is_read: true,
         importance: UnicodePstImportance::Normal,
-        sender: Some(UnicodePstSender { name: "Memex Sender", email: "sender@example.com", address_type: "SMTP" }),
+        sender: Some(UnicodePstSender {
+            name: "Memex Sender",
+            email: "sender@example.com",
+            address_type: "SMTP",
+        }),
         client_submit_time: None,
         categories: &[],
         transport_headers: None,

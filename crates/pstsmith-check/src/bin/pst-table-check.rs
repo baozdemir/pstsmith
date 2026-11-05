@@ -13,7 +13,9 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::rc::Rc;
 
-const B1_IDS: &[u16] = &[0x0017, 0x0039, 0x0064, 0x0065, 0x0C1E, 0x0E06, 0x0E07, 0x3008, 0x300B];
+const B1_IDS: &[u16] = &[
+    0x0017, 0x0039, 0x0064, 0x0065, 0x0C1E, 0x0E06, 0x0E07, 0x3008, 0x300B,
+];
 
 fn show(v: &PropertyValue) -> String {
     match v {
@@ -30,10 +32,16 @@ fn rows_in_heap(t: &dyn TableContext) -> bool {
         .is_some_and(|n| matches!(n.id_type(), Ok(NodeIdType::HeapNode)))
 }
 
-fn cell(t: &dyn TableContext, row_id: u32, prop: u16) -> Result<Option<Option<PropertyValue>>, String> {
+fn cell(
+    t: &dyn TableContext,
+    row_id: u32,
+    prop: u16,
+) -> Result<Option<Option<PropertyValue>>, String> {
     // Ok(None): no such column; Ok(Some(None)): column without a cell; Ok(Some(Some(v))): value.
     let ctx = t.context();
-    let row = t.find_row(TableRowId::new(row_id)).map_err(|e| format!("find_row {row_id:X}: {e:?}"))?;
+    let row = t
+        .find_row(TableRowId::new(row_id))
+        .map_err(|e| format!("find_row {row_id:X}: {e:?}"))?;
     let values = row.columns(ctx).map_err(|e| format!("columns: {e:?}"))?;
     for (col, val) in ctx.columns().iter().zip(values) {
         if col.prop_id() != prop {
@@ -41,7 +49,10 @@ fn cell(t: &dyn TableContext, row_id: u32, prop: u16) -> Result<Option<Option<Pr
         }
         return Ok(Some(match val {
             None => None,
-            Some(v) => Some(t.read_column(&v, col.prop_type()).map_err(|e| format!("read_column {prop:04X}: {e:?}"))?),
+            Some(v) => Some(
+                t.read_column(&v, col.prop_type())
+                    .map_err(|e| format!("read_column {prop:04X}: {e:?}"))?,
+            ),
         }));
     }
     Ok(None)
@@ -55,7 +66,12 @@ struct Tally {
     no_submit: usize,
 }
 
-fn walk(store: &Rc<dyn Store>, parent: NodeId, path: &mut Vec<String>, t: &mut Tally) -> Result<(), Box<dyn Error>> {
+fn walk(
+    store: &Rc<dyn Store>,
+    parent: NodeId,
+    path: &mut Vec<String>,
+    t: &mut Tally,
+) -> Result<(), Box<dyn Error>> {
     let parent_folder = store.open_folder(&store.properties().make_entry_id(parent)?)?;
     let Some(hier) = parent_folder.hierarchy_table() else {
         println!("FOLDER-HIER {:?}: no hierarchy table", path);
@@ -77,14 +93,18 @@ fn walk(store: &Rc<dyn Store>, parent: NodeId, path: &mut Vec<String>, t: &mut T
         hier.rows_matrix().count()
     );
     if counter_cols.len() == 1 {
-        t.mismatches.push(format!("{path:?}: hierarchy table has only one counter column {counter_cols:?}"));
+        t.mismatches.push(format!(
+            "{path:?}: hierarchy table has only one counter column {counter_cols:?}"
+        ));
     }
     let children: Vec<u32> = hier.rows_matrix().map(|r| u32::from(r.id())).collect();
     for child in children {
         let node = NodeId::from(child);
         let folder = store.open_folder(&store.properties().make_entry_id(node)?)?;
         let props = folder.properties();
-        let name = props.display_name().unwrap_or_else(|e| format!("<name error {e}>"));
+        let name = props
+            .display_name()
+            .unwrap_or_else(|e| format!("<name error {e}>"));
         path.push(name.clone());
         let pc_content = props.get(0x3602).map(show);
         let pc_unread = props.get(0x3603).map(show);
@@ -100,12 +120,16 @@ fn walk(store: &Rc<dyn Store>, parent: NodeId, path: &mut Vec<String>, t: &mut T
                 rows += 1;
                 t.messages += 1;
                 let row_id = u32::from(row.id());
-                let message = store.open_message(&store.properties().make_entry_id(NodeId::from(row_id))?, None)?;
+                let message = store.open_message(
+                    &store.properties().make_entry_id(NodeId::from(row_id))?,
+                    None,
+                )?;
                 let mprops = message.properties();
                 let flags = match mprops.get(0x0E07) {
                     Some(PropertyValue::Integer32(f)) => *f,
                     other => {
-                        t.mismatches.push(format!("{path:?} msg {row_id:X}: PC 0E07 = {other:?}"));
+                        t.mismatches
+                            .push(format!("{path:?} msg {row_id:X}: PC 0E07 = {other:?}"));
                         0
                     }
                 };
@@ -135,7 +159,9 @@ fn walk(store: &Rc<dyn Store>, parent: NodeId, path: &mut Vec<String>, t: &mut T
                     if tc != pc {
                         entry.1 += 1;
                         if B1_IDS.contains(&id) {
-                            t.mismatches.push(format!("{path:?} msg {row_id:X}: TC {id:04X} = {tc:?} vs PC {pc:?}"));
+                            t.mismatches.push(format!(
+                                "{path:?} msg {row_id:X}: TC {id:04X} = {tc:?} vs PC {pc:?}"
+                            ));
                         }
                     }
                 }
@@ -159,17 +185,23 @@ fn walk(store: &Rc<dyn Store>, parent: NodeId, path: &mut Vec<String>, t: &mut T
                 _ => pc_name.clone(),
             };
             if c != "no-column" && Some(c.clone()) != pc {
-                t.mismatches.push(format!("{path:?}: hierarchy row cell {prop:04X} = {c} vs PC {pc:?}"));
+                t.mismatches.push(format!(
+                    "{path:?}: hierarchy row cell {prop:04X} = {c} vs PC {pc:?}"
+                ));
             }
             hier_cells.push(format!("{prop:04X}={c}"));
         }
         let want_content = Some(format!("{:?}", PropertyValue::Integer32(rows as i32)));
         let want_unread = Some(format!("{:?}", PropertyValue::Integer32(unread as i32)));
         if pc_content != want_content {
-            t.mismatches.push(format!("{path:?}: PC 3602 = {pc_content:?} but {rows} contents rows"));
+            t.mismatches.push(format!(
+                "{path:?}: PC 3602 = {pc_content:?} but {rows} contents rows"
+            ));
         }
         if pc_unread != want_unread {
-            t.mismatches.push(format!("{path:?}: PC 3603 = {pc_unread:?} but {unread} unread messages (recount)"));
+            t.mismatches.push(format!(
+                "{path:?}: PC 3603 = {pc_unread:?} but {unread} unread messages (recount)"
+            ));
         }
         println!(
             "FOLDER {path:?} node={child:X} PC3602={pc_content:?} PC3603={pc_unread:?} rows={rows} unread_recount={unread} parent_row[{}]",
@@ -182,15 +214,29 @@ fn walk(store: &Rc<dyn Store>, parent: NodeId, path: &mut Vec<String>, t: &mut T
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let path = std::env::args().nth(1).ok_or("usage: pst-table-check FILE.pst")?;
+    let path = std::env::args()
+        .nth(1)
+        .ok_or("usage: pst-table-check FILE.pst")?;
     let store = pstsmith::open_store(&path)?;
     let ipm = store.properties().ipm_sub_tree_entry_id()?.node_id();
-    let mut t = Tally { mismatches: Vec::new(), tc_checked: BTreeMap::new(), messages: 0, unread_messages: 0, no_submit: 0 };
+    let mut t = Tally {
+        mismatches: Vec::new(),
+        tc_checked: BTreeMap::new(),
+        messages: 0,
+        unread_messages: 0,
+        no_submit: 0,
+    };
     walk(&store, ipm, &mut Vec::new(), &mut t)?;
     for (id, (n, bad)) in &t.tc_checked {
-        println!("TC-COLUMN {id:04X}{} compared={n} mismatched={bad}", if B1_IDS.contains(id) { " (B1)" } else { "" });
+        println!(
+            "TC-COLUMN {id:04X}{} compared={n} mismatched={bad}",
+            if B1_IDS.contains(id) { " (B1)" } else { "" }
+        );
     }
-    println!("MESSAGES {} unread={} without_0039={}", t.messages, t.unread_messages, t.no_submit);
+    println!(
+        "MESSAGES {} unread={} without_0039={}",
+        t.messages, t.unread_messages, t.no_submit
+    );
     for m in &t.mismatches {
         println!("MISMATCH {m}");
     }

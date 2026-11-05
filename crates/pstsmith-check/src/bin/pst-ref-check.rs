@@ -14,15 +14,23 @@
 //!
 //!     pst-ref-check FILE.pst
 fn main() {
-    let path = std::env::args().nth(1).expect("usage: pst-ref-check FILE.pst");
+    let path = std::env::args()
+        .nth(1)
+        .expect("usage: pst-ref-check FILE.pst");
     let fail = |error: std::io::Error| -> ! {
         eprintln!("{error}");
         std::process::exit(2);
     };
-    let (blocks, mismatches, unreferenced, missing) = pstsmith::debug_block_references(&path).unwrap_or_else(|error| fail(error));
+    let (blocks, mismatches, unreferenced, missing) =
+        pstsmith::debug_block_references(&path).unwrap_or_else(|error| fail(error));
     let (amap_pages, amap_differing, leaked, unmarked, unmarked_sample, header_free, pages_free) =
         pstsmith::debug_allocation_map(&path).unwrap_or_else(|error| fail(error));
-    let hex = |keys: &[u64]| keys.iter().take(20).map(|key| format!("{key:#x}")).collect::<Vec<_>>();
+    let hex = |keys: &[u64]| {
+        keys.iter()
+            .take(20)
+            .map(|key| format!("{key:#x}"))
+            .collect::<Vec<_>>()
+    };
     println!(
         "{}",
         serde_json::json!({
@@ -42,5 +50,12 @@ fn main() {
             "amap_free_pages": pages_free,
         })
     );
-    std::process::exit(if mismatches.is_empty() && missing.is_empty() && unmarked == 0 && header_free == pages_free { 0 } else { 1 });
+    std::process::exit(
+        if mismatches.is_empty() && missing.is_empty() && unmarked == 0 && header_free == pages_free
+        {
+            0
+        } else {
+            1
+        },
+    );
 }

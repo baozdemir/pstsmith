@@ -22,15 +22,27 @@ fn result_line_names_pstsmith() {
     )
     .unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_pstsmith"))
-        .args(["--manifest", manifest.to_str().unwrap(), "--output", dir.join("out.pst").to_str().unwrap()])
+        .args([
+            "--manifest",
+            manifest.to_str().unwrap(),
+            "--output",
+            dir.join("out.pst").to_str().unwrap(),
+        ])
         .args(["--excluded", dir.join("excluded.jsonl").to_str().unwrap()])
         .output()
         .unwrap();
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let line: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(line["engine"]["name"], "pstsmith");
     assert_eq!(line["engine"]["version"], env!("CARGO_PKG_VERSION"));
-    assert_eq!(line["engine"]["writer"], format!("pstsmith {}", env!("CARGO_PKG_VERSION")));
+    assert_eq!(
+        line["engine"]["writer"],
+        format!("pstsmith {}", env!("CARGO_PKG_VERSION"))
+    );
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -43,10 +55,20 @@ fn cli_convert_json_matches_report() {
     std::fs::write(&mbox, MBOX).unwrap();
     let output = dir.join("out.pst");
     let run = Command::new(env!("CARGO_BIN_EXE_pstsmith"))
-        .args(["convert", mbox.to_str().unwrap(), "-o", output.to_str().unwrap(), "--json"])
+        .args([
+            "convert",
+            mbox.to_str().unwrap(),
+            "-o",
+            output.to_str().unwrap(),
+            "--json",
+        ])
         .output()
         .unwrap();
-    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
     let line: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
     assert_eq!(line["protocol"], "pst-export-result/1");
     assert_eq!(line["written"], 2);
@@ -64,10 +86,19 @@ fn cli_convert_without_json_prints_only_the_summary() {
     std::fs::write(&mbox, MBOX).unwrap();
     let output = dir.join("out.pst");
     let run = Command::new(env!("CARGO_BIN_EXE_pstsmith"))
-        .args(["convert", mbox.to_str().unwrap(), "--output", output.to_str().unwrap()])
+        .args([
+            "convert",
+            mbox.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ])
         .output()
         .unwrap();
-    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
     assert!(run.stdout.is_empty());
     assert!(String::from_utf8_lossy(&run.stderr).contains(output.to_str().unwrap()));
     std::fs::remove_dir_all(&dir).unwrap();
@@ -77,11 +108,17 @@ fn cli_convert_without_json_prints_only_the_summary() {
 fn cli_convert_refuses_a_missing_input() {
     let dir = temp_dir("convert-missing");
     let run = Command::new(env!("CARGO_BIN_EXE_pstsmith"))
-        .args(["convert", dir.join("nope.mbox").to_str().unwrap(), "-o", dir.join("out.pst").to_str().unwrap()])
+        .args([
+            "convert",
+            dir.join("nope.mbox").to_str().unwrap(),
+            "-o",
+            dir.join("out.pst").to_str().unwrap(),
+        ])
         .output()
         .unwrap();
     assert_eq!(run.status.code(), Some(2));
-    let line: serde_json::Value = serde_json::from_slice(run.stderr.split(|b| *b == b'\n').next().unwrap()).unwrap();
+    let line: serde_json::Value =
+        serde_json::from_slice(run.stderr.split(|b| *b == b'\n').next().unwrap()).unwrap();
     assert_eq!(line["error"], "input-unreadable");
     assert!(!dir.join("out.pst").exists());
     std::fs::remove_dir_all(&dir).unwrap();
@@ -89,13 +126,25 @@ fn cli_convert_refuses_a_missing_input() {
 
 #[test]
 fn cli_help_and_version() {
-    let help = Command::new(env!("CARGO_BIN_EXE_pstsmith")).arg("--help").output().unwrap();
+    let help = Command::new(env!("CARGO_BIN_EXE_pstsmith"))
+        .arg("--help")
+        .output()
+        .unwrap();
     assert!(help.status.success());
     let text = String::from_utf8_lossy(&help.stdout);
-    assert!(text.contains("pstsmith convert") && text.contains("--manifest"), "{text}");
-    let version = Command::new(env!("CARGO_BIN_EXE_pstsmith")).arg("--version").output().unwrap();
+    assert!(
+        text.contains("pstsmith convert") && text.contains("--manifest"),
+        "{text}"
+    );
+    let version = Command::new(env!("CARGO_BIN_EXE_pstsmith"))
+        .arg("--version")
+        .output()
+        .unwrap();
     assert!(version.status.success());
-    assert_eq!(String::from_utf8_lossy(&version.stdout).trim(), format!("pstsmith {}", env!("CARGO_PKG_VERSION")));
+    assert_eq!(
+        String::from_utf8_lossy(&version.stdout).trim(),
+        format!("pstsmith {}", env!("CARGO_PKG_VERSION"))
+    );
 }
 
 /// Writes an MBOX large enough that a conversion of it is still running when a test stops it.
@@ -111,16 +160,31 @@ fn big_mbox(path: &std::path::Path) {
 /// Starts `pstsmith convert MBOX -o OUTPUT --temp-dir STAGING` (through `sh -c` with `prefix` before it) and returns it
 /// once it has staged some mail.
 #[cfg(unix)]
-fn start_convert(prefix: &str, mbox: &std::path::Path, output: &std::path::Path, staging: &std::path::Path) -> std::process::Child {
+fn start_convert(
+    prefix: &str,
+    mbox: &std::path::Path,
+    output: &std::path::Path,
+    staging: &std::path::Path,
+) -> std::process::Child {
     let script = format!("{prefix} exec \"$0\" convert \"$1\" -o \"$2\" --temp-dir \"$3\"");
     let child = Command::new("sh")
-        .args(["-c", &script, env!("CARGO_BIN_EXE_pstsmith"), mbox.to_str().unwrap(), output.to_str().unwrap(), staging.to_str().unwrap()])
+        .args([
+            "-c",
+            &script,
+            env!("CARGO_BIN_EXE_pstsmith"),
+            mbox.to_str().unwrap(),
+            output.to_str().unwrap(),
+            staging.to_str().unwrap(),
+        ])
         .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap();
     let started = std::time::Instant::now();
     while std::fs::read_dir(staging).unwrap().next().is_none() {
-        assert!(started.elapsed() < std::time::Duration::from_secs(30), "no staging directory appeared");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(30),
+            "no staging directory appeared"
+        );
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -129,7 +193,11 @@ fn start_convert(prefix: &str, mbox: &std::path::Path, output: &std::path::Path,
 
 #[cfg(unix)]
 fn send(child: &std::process::Child, signal: &str) {
-    assert!(Command::new("kill").args([&format!("-{signal}"), &child.id().to_string()]).status().unwrap().success());
+    assert!(Command::new("kill")
+        .args([&format!("-{signal}"), &child.id().to_string()])
+        .status()
+        .unwrap()
+        .success());
 }
 
 /// A conversion stopped by SIGTERM, SIGINT (Ctrl-C), SIGQUIT or SIGHUP removes what it created: the staging
@@ -151,15 +219,40 @@ fn a_stopped_convert_removes_its_staging_and_output() {
         let result = child.wait_with_output().unwrap();
         if signal == "QUIT" {
             // SIGQUIT's default action dumps core, which would hold decoded mail: it exits with 128 + 3 instead.
-            assert_eq!((result.status.code(), result.status.signal()), (Some(131), None), "SIGQUIT: {:?}", result.status);
+            assert_eq!(
+                (result.status.code(), result.status.signal()),
+                (Some(131), None),
+                "SIGQUIT: {:?}",
+                result.status
+            );
         } else {
-            assert_eq!(result.status.signal(), Some(number), "SIG{signal}: {:?}", result.status);
+            assert_eq!(
+                result.status.signal(),
+                Some(number),
+                "SIG{signal}: {:?}",
+                result.status
+            );
         }
         let stderr = String::from_utf8_lossy(&result.stderr);
-        assert!(stderr.lines().next().is_some_and(|line| line.contains("\"error\":\"interrupted\"")), "SIG{signal}: {stderr}");
-        let left: Vec<_> = std::fs::read_dir(&staging).unwrap().map(|entry| entry.unwrap().path()).collect();
-        assert!(left.is_empty(), "SIG{signal}: staging left behind: {left:?}");
-        assert!(!output.exists(), "SIG{signal}: a partial output was left behind");
+        assert!(
+            stderr
+                .lines()
+                .next()
+                .is_some_and(|line| line.contains("\"error\":\"interrupted\"")),
+            "SIG{signal}: {stderr}"
+        );
+        let left: Vec<_> = std::fs::read_dir(&staging)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        assert!(
+            left.is_empty(),
+            "SIG{signal}: staging left behind: {left:?}"
+        );
+        assert!(
+            !output.exists(),
+            "SIG{signal}: a partial output was left behind"
+        );
     }
     std::fs::remove_dir_all(&dir).unwrap();
 }
@@ -177,7 +270,12 @@ fn a_signal_ignored_at_start_does_not_stop_convert() {
     let child = start_convert("trap '' HUP;", &mbox, &output, &staging);
     send(&child, "HUP");
     let result = child.wait_with_output().unwrap();
-    assert!(result.status.success(), "{:?}: {}", result.status, String::from_utf8_lossy(&result.stderr));
+    assert!(
+        result.status.success(),
+        "{:?}: {}",
+        result.status,
+        String::from_utf8_lossy(&result.stderr)
+    );
     assert!(output.exists());
     std::fs::remove_dir_all(&dir).unwrap();
 }
@@ -227,18 +325,34 @@ fn a_convert_stopped_while_writing_its_file_removes_it() {
     std::fs::create_dir(&staging).unwrap();
     let output = dir.join("out.pst");
     let child = Command::new(env!("CARGO_BIN_EXE_pstsmith"))
-        .args(["convert", mbox.to_str().unwrap(), "-o", output.to_str().unwrap(), "--temp-dir", staging.to_str().unwrap()])
+        .args([
+            "convert",
+            mbox.to_str().unwrap(),
+            "-o",
+            output.to_str().unwrap(),
+            "--temp-dir",
+            staging.to_str().unwrap(),
+        ])
         .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap();
     let started = std::time::Instant::now();
     while !output.exists() {
-        assert!(started.elapsed() < std::time::Duration::from_secs(120), "the output never appeared");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(120),
+            "the output never appeared"
+        );
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
     send(&child, "INT");
     let result = child.wait_with_output().unwrap();
-    assert_eq!(result.status.signal(), Some(2), "{:?}: {}", result.status, String::from_utf8_lossy(&result.stderr));
+    assert_eq!(
+        result.status.signal(),
+        Some(2),
+        "{:?}: {}",
+        result.status,
+        String::from_utf8_lossy(&result.stderr)
+    );
     assert!(!output.exists(), "the output was left behind");
     assert_eq!(std::fs::read_dir(&staging).unwrap().count(), 0);
     std::fs::remove_dir_all(&dir).unwrap();
@@ -276,7 +390,13 @@ fn a_json_result_with_stdout_closed_is_an_error_not_a_panic() {
     std::fs::write(&mbox, MBOX).unwrap();
     let output = dir.join("out.pst");
     let mut child = Command::new(env!("CARGO_BIN_EXE_pstsmith"))
-        .args(["convert", mbox.to_str().unwrap(), "-o", output.to_str().unwrap(), "--json"])
+        .args([
+            "convert",
+            mbox.to_str().unwrap(),
+            "-o",
+            output.to_str().unwrap(),
+            "--json",
+        ])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -287,7 +407,12 @@ fn a_json_result_with_stdout_closed_is_an_error_not_a_panic() {
     assert_eq!(result.status.code(), Some(5), "{stderr}");
     assert!(!stderr.contains("panicked"), "{stderr}");
     // The error is the first line on stderr, as for every error.
-    assert!(stderr.lines().next().is_some_and(|line| line.starts_with("{\"detail\"") && line.contains("\"error\":\"io\"")), "{stderr}");
+    assert!(
+        stderr.lines().next().is_some_and(
+            |line| line.starts_with("{\"detail\"") && line.contains("\"error\":\"io\"")
+        ),
+        "{stderr}"
+    );
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -295,15 +420,32 @@ fn a_json_result_with_stdout_closed_is_an_error_not_a_panic() {
 fn folders(path: &std::path::Path) -> std::collections::BTreeMap<Vec<String>, usize> {
     use pstsmith::messaging::store::Store;
     use pstsmith::ndb::node_id::NodeId;
-    fn walk(store: &std::rc::Rc<dyn Store>, folder: NodeId, path: Vec<String>, out: &mut std::collections::BTreeMap<Vec<String>, usize>) {
-        let opened = store.open_folder(&store.properties().make_entry_id(folder).unwrap()).unwrap();
+    fn walk(
+        store: &std::rc::Rc<dyn Store>,
+        folder: NodeId,
+        path: Vec<String>,
+        out: &mut std::collections::BTreeMap<Vec<String>, usize>,
+    ) {
+        let opened = store
+            .open_folder(&store.properties().make_entry_id(folder).unwrap())
+            .unwrap();
         if !path.is_empty() {
-            out.insert(path.clone(), opened.contents_table().map_or(0, |contents| contents.rows_matrix().count()));
+            out.insert(
+                path.clone(),
+                opened
+                    .contents_table()
+                    .map_or(0, |contents| contents.rows_matrix().count()),
+            );
         }
         if let Some(hierarchy) = opened.hierarchy_table() {
             for row in hierarchy.rows_matrix() {
                 let child = NodeId::from(u32::from(row.id()));
-                let name = store.open_folder(&store.properties().make_entry_id(child).unwrap()).unwrap().properties().display_name().unwrap();
+                let name = store
+                    .open_folder(&store.properties().make_entry_id(child).unwrap())
+                    .unwrap()
+                    .properties()
+                    .display_name()
+                    .unwrap();
                 let mut child_path = path.clone();
                 child_path.push(name);
                 walk(store, child, child_path, out);
@@ -311,7 +453,11 @@ fn folders(path: &std::path::Path) -> std::collections::BTreeMap<Vec<String>, us
         }
     }
     let store = pstsmith::open_store(path).unwrap();
-    let root = store.properties().ipm_sub_tree_entry_id().unwrap().node_id();
+    let root = store
+        .properties()
+        .ipm_sub_tree_entry_id()
+        .unwrap()
+        .node_id();
     let mut out = std::collections::BTreeMap::new();
     walk(&store, root, Vec::new(), &mut out);
     out
@@ -327,8 +473,16 @@ fn a_relative_mbox_inside_an_apple_mailbox_is_judged_like_its_full_path() {
     std::fs::create_dir_all(&mailbox).unwrap();
     std::fs::write(mailbox.join("mbox"), "From a Mon Jan  1 10:00:00 2024\nFrom: a@example.invalid\nSubject: filed\nX-Gmail-Labels: Archived\n\nbody\n").unwrap();
     let run = |current: &std::path::Path, input: &str, output: &std::path::Path| {
-        let result = Command::new(env!("CARGO_BIN_EXE_pstsmith")).current_dir(current).args(["convert", input, "-o", output.to_str().unwrap()]).output().unwrap();
-        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+        let result = Command::new(env!("CARGO_BIN_EXE_pstsmith"))
+            .current_dir(current)
+            .args(["convert", input, "-o", output.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
         folders(output)
     };
     let key = |path: &[&str]| path.iter().map(|name| name.to_string()).collect::<Vec<_>>();
@@ -343,6 +497,9 @@ fn a_relative_mbox_inside_an_apple_mailbox_is_judged_like_its_full_path() {
     std::fs::copy(mailbox.join("mbox"), plain.join("mbox")).unwrap();
     let routed = run(&plain, "mbox", &dir.join("routed.pst"));
     assert_eq!(routed.get(&key(&["Archive"])), Some(&1), "{routed:?}");
-    assert!(routed.get(&key(&["mbox"])).is_none_or(|count| *count == 0), "{routed:?}");
+    assert!(
+        routed.get(&key(&["mbox"])).is_none_or(|count| *count == 0),
+        "{routed:?}"
+    );
     std::fs::remove_dir_all(&dir).unwrap();
 }

@@ -30,7 +30,12 @@ fn converts_a_manifest_and_reports_it() {
     let one = item("one-000001", "d84d31617bc154cf80e289d2dd4a62b9");
     let manifest = write_manifest(&dir, &[HEADER_ONE_ITEM, INBOX, &one]);
     let output = dir.join("out.pst");
-    let report = convert_manifest(&manifest, &Output::File(output.clone()), &ManifestOptions::default()).unwrap();
+    let report = convert_manifest(
+        &manifest,
+        &Output::File(output.clone()),
+        &ManifestOptions::default(),
+    )
+    .unwrap();
     assert_eq!(report.written(), 1);
     assert_eq!(report.skipped(), 0);
     assert_eq!(report.outputs(), vec![output.clone()]);
@@ -48,7 +53,12 @@ fn refuses_an_existing_output() {
     let manifest = write_manifest(&dir, &[HEADER_ONE_ITEM, INBOX, &one]);
     let output = dir.join("out.pst");
     std::fs::write(&output, b"keep").unwrap();
-    let error = convert_manifest(&manifest, &Output::File(output.clone()), &ManifestOptions::default()).unwrap_err();
+    let error = convert_manifest(
+        &manifest,
+        &Output::File(output.clone()),
+        &ManifestOptions::default(),
+    )
+    .unwrap_err();
     assert_eq!(error.code, "output-exists");
     assert_eq!(error.exit_code, 4);
     assert_eq!(std::fs::read(&output).unwrap(), b"keep");
@@ -64,23 +74,41 @@ fn a_failure_after_a_commit_removes_the_output() {
     let third = item("three-000003", "not-hex");
     let manifest = write_manifest(&dir, &[HEADER_THREE_ITEMS, INBOX, &first, &second, &third]);
     let output = dir.join("out.pst");
-    let options = ManifestOptions { batch_items: 1, ..ManifestOptions::default() };
+    let options = ManifestOptions {
+        batch_items: 1,
+        ..ManifestOptions::default()
+    };
     let error = convert_manifest(&manifest, &Output::File(output.clone()), &options).unwrap_err();
     assert_eq!(error.code, "invalid-manifest");
     assert_eq!(error.exit_code, 2);
     assert_eq!(error.item_key.as_deref(), Some("three-000003"));
-    assert!(!output.exists(), "a failed conversion leaves no partial output");
+    assert!(
+        !output.exists(),
+        "a failed conversion leaves no partial output"
+    );
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
 #[test]
 fn an_unconverted_class_is_named_in_the_error() {
     let dir = temp_dir("class");
-    let contact = item("one-000001", "d84d31617bc154cf80e289d2dd4a62b9").replace("\"IPM.Note\"", "\"IPM.Contact\"");
+    let contact = item("one-000001", "d84d31617bc154cf80e289d2dd4a62b9")
+        .replace("\"IPM.Note\"", "\"IPM.Contact\"");
     let manifest = write_manifest(&dir, &[HEADER_ONE_ITEM, INBOX, &contact]);
-    let error = convert_manifest(&manifest, &Output::File(dir.join("out.pst")), &ManifestOptions::default()).unwrap_err();
+    let error = convert_manifest(
+        &manifest,
+        &Output::File(dir.join("out.pst")),
+        &ManifestOptions::default(),
+    )
+    .unwrap_err();
     assert_eq!(error.code, "unsupported-item-class");
     assert!(error.detail.contains("\"IPM.Contact\""), "{}", error.detail);
-    assert!(error.detail.ends_with("(calendar items, contacts, tasks and other classes are not converted)"), "{}", error.detail);
+    assert!(
+        error
+            .detail
+            .ends_with("(calendar items, contacts, tasks and other classes are not converted)"),
+        "{}",
+        error.detail
+    );
     std::fs::remove_dir_all(&dir).unwrap();
 }
