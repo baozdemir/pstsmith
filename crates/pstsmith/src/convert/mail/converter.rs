@@ -74,6 +74,12 @@ impl Converter {
         if options.excluded.as_ref().is_some_and(|path| path.exists()) {
             return Err(error("output-exists", 4, "exclusion record path already exists; the caller owns a fresh temporary path"));
         }
+        // Found now, not after the whole input is staged.
+        for target in std::iter::once(path).chain(options.excluded.as_ref()) {
+            if let Some(parent) = target.parent().filter(|parent| !parent.as_os_str().is_empty() && !parent.is_dir()) {
+                return Err(error("io", 5, format!("the directory {} does not exist", parent.display())));
+            }
+        }
         let staging = Staging::create(temp_dir).map_err(io_error)?;
         let items = BufWriter::new(staging.private_file("items.jsonl").map_err(io_error)?);
         Ok(Self {
@@ -137,6 +143,8 @@ impl Converter {
             } else {
                 self.walk(input, &name, &[], &name)
             }
+        } else if is_pst(input).map_err(|e| unreadable(input, e))? {
+            Err(error("input-unsupported", 2, format!("{}: a PST file is not mail input; pstsmith writes PST files from mail", input.display())))
         } else if is_mbox(input).map_err(|e| unreadable(input, e))? {
             let folder = vec![mbox_folder_name(&name)];
             self.add_mbox(input, &name, &folder)
@@ -235,11 +243,11 @@ impl Converter {
         Ok(())
     }
 
+    /// The messages of an MBOX file, in `folder` unless their Gmail labels say otherwise. An MBOX without a message is
+    /// a folder still (Thunderbird keeps an empty folder as an empty file, or one of deleted messages only); one whose
+    /// every message has a label adds no folder of its own (Google Takeout's "All mail Including Spam and Trash").
     fn add_mbox(&mut self, path: &Path, container: &str, folder: &[String]) -> Result<(), ConvertError> {
-        self.folders.insert(folder.to_vec());
-        for depth in 1..folder.len() {
-            self.folders.insert(folder[..depth].to_vec());
-        }
+        let before = self.count;
         let file = File::open(path).map_err(|e| unreadable(path, e))?;
         let mut entries = MboxEntries { reader: BufReader::new(file), line: Vec::new(), ahead: Vec::new(), pending: None, first: true };
         while let Some(entry) = entries.next_entry().map_err(|e| unreadable(path, e))? {
@@ -250,6 +258,11 @@ impl Converter {
                 continue;
             }
             self.add_message(raw, container, folder, date, None, false)?;
+        }
+        if self.count == before {
+            for depth in 1..=folder.len() {
+                self.folders.insert(folder[..depth].to_vec());
+            }
         }
         Ok(())
     }
@@ -533,6 +546,13 @@ fn sorted_entries(dir: &Path) -> io::Result<Vec<PathBuf>> {
 
 fn is_maildir(dir: &Path) -> bool {
     dir.join("cur").is_dir() && dir.join("new").is_dir()
+}
+
+/// A PST file starts with the magic "!BDN" (MS-PST 2.2.2.6).
+fn is_pst(path: &Path) -> io::Result<bool> {
+    let mut magic = Vec::with_capacity(4);
+    File::open(path)?.take(4).read_to_end(&mut magic)?;
+    Ok(magic == b"!BDN")
 }
 
 /// A file is an MBOX when its first line that is not empty (after a UTF-8 byte order mark) starts with "From ".

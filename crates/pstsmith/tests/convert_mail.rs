@@ -589,3 +589,41 @@ fn a_stopped_conversion_removes_what_it_created_and_nothing_else() {
     assert_eq!(std::fs::read_dir(&staging_parent).unwrap().count(), 0);
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn an_output_in_a_missing_directory_is_refused_before_staging() {
+    let dir = temp_dir("missing-parent");
+    let staging = dir.join("staging");
+    std::fs::create_dir(&staging).unwrap();
+    let error = Converter::create_in(Output::File(dir.join("missing").join("out.pst")), &ManifestOptions::default(), &staging).unwrap_err();
+    assert_eq!(error.code, "io");
+    assert!(error.detail.contains("does not exist"), "{}", error.detail);
+    assert_eq!(std::fs::read_dir(&staging).unwrap().count(), 0);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_pst_given_as_input_is_refused_by_name() {
+    let dir = temp_dir("pst-input");
+    let pst = dir.join("old.pst");
+    write(&pst, b"!BDN\x00\x00\x00\x00 not mail");
+    let mut converter = Converter::create(Output::File(dir.join("out.pst")), &ManifestOptions::default()).unwrap();
+    let error = converter.add_path(&pst).unwrap_err();
+    assert_eq!(error.code, "input-unsupported");
+    assert!(error.detail.contains("PST"), "{}", error.detail);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_takeout_mbox_whose_messages_all_have_labels_leaves_no_empty_folder() {
+    let dir = temp_dir("takeout-folder");
+    let mbox = dir.join("All mail Including Spam and Trash.mbox");
+    write(&mbox, format!("From 1@xxx Mon Jan 01 10:00:00 +0000 2024\nX-Gmail-Labels: Inbox\n{}\n", eml("labelled")).as_bytes());
+    let output = dir.join("out.pst");
+    // (An MBOX without a message still becomes a folder: empty_thunderbird_folder_is_kept.)
+    convert(&[&mbox], &output);
+    let folders = tree(&output);
+    assert_eq!(folders[&key(&["Inbox"])], vec!["labelled"]);
+    assert!(!folders.contains_key(&key(&["All mail Including Spam and Trash"])), "{:?}", folders.keys().collect::<Vec<_>>());
+    std::fs::remove_dir_all(&dir).unwrap();
+}

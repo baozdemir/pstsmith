@@ -15,6 +15,8 @@ categories = ["command-line-utilities", "email"]
 [[bin]]
 name = "pstsmith"
 path = "src/main.rs"
+# The library's documentation is the pstsmith crate's; the binary's would take the same path.
+doc = false
 
 [dependencies]
 pstsmith = { path = "../pstsmith", version = "0.1.0" }

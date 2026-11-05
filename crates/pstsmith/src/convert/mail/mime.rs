@@ -73,9 +73,12 @@ pub(crate) fn message_from_mime(raw: &[u8], origin: &Origin, stage: &mut dyn Sta
         if let Some(status) = text_header(&message, "X-Mozilla-Status").and_then(|value| u32::from_str_radix(value.trim(), 16).ok()) {
             return status & 0x0001 != 0;
         }
+        // mbox Status R is read; X-Status A (answered) means it was read too.
         match (text_header(&message, "Status"), text_header(&message, "X-Status")) {
             (None, None) => true,
-            (status, x_status) => status.into_iter().chain(x_status).any(|value| value.contains('R')),
+            (status, x_status) => {
+                x_status.is_some_and(|value| value.contains('A')) || status.into_iter().chain(x_status).any(|value| value.contains('R'))
+            }
         }
     });
     let sent = unix_time(message.date());

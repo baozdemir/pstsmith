@@ -279,6 +279,8 @@ fn read_state_order() {
     assert_eq!(read("Status: O\r\n", &plain), false);
     assert_eq!(read("Status: RO\r\n", &plain), true);
     assert_eq!(read("X-Status: R\r\n", &plain), true);
+    // An answered message was read (mutt, Eudora: X-Status A).
+    assert_eq!(read("X-Status: A\r\n", &plain), true);
     // The Maildir flags are the source's own state and come first.
     let unseen = Origin { seen: Some(false), ..origin() };
     assert_eq!(read("Status: RO\r\n", &unseen), false);

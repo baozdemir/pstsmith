@@ -19,7 +19,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   Maildir++ folder names in IMAP's modified UTF-7 (Dovecot, Courier) are decoded; an MBOX "From " line whose date is
   written as in a Date header starts a message when a blank line comes before it and a header field after it.
   `Converter::set_cancel_flag` stops a conversion cleanly (it removes what it created), and `Converter::staging_dir`
-  names its private staging directory.
+  names its private staging directory. A PST file given as input is refused by name, an output in a missing directory
+  is refused before anything is staged, and an MBOX whose messages all carry Gmail labels adds no empty folder.
 
 ### Changed
 
