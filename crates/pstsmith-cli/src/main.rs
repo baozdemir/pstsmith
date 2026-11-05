@@ -31,7 +31,16 @@ use pstsmith::convert::mail::Converter;
 use pstsmith::convert::{convert_manifest, ConvertError, ManifestOptions, Output, Report, FILE_SIZE_CHOICES};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::{env, path::PathBuf, process::ExitCode};
+use std::io::Write;
+use std::{env, io, path::PathBuf, process::ExitCode};
+
+/// Writes a line to stderr. A stderr that is gone (a closed terminal, a pipe whose reader exited) is not an error of
+/// the conversion: unlike `eprintln!`, this never panics, so a stopped conversion still ends by its signal.
+macro_rules! say {
+    ($($arg:tt)*) => {{
+        let _ = writeln!(io::stderr(), $($arg)*);
+    }};
+}
 
 const HELP: &str = "\
 pstsmith: read, create and append PST files without Outlook
@@ -58,8 +67,9 @@ Options:
 
 Exit codes: 0 converted; 2 invalid input or usage; 3 an attachment does not match its recorded size or hash;
 4 an output path exists; 5 a writer or I/O failure. An error is the first line on stderr, as JSON. convert stopped
-by Ctrl-C (on Unix also SIGTERM, SIGQUIT or SIGHUP) removes what it wrote, prints the error interrupted and ends by
-that signal (exit status 128 plus its number); a second Ctrl-C ends it at once.
+by Ctrl-C (on Unix also SIGTERM or SIGHUP) removes what it wrote, prints the error interrupted and ends by that
+signal (a shell shows 128 plus its number); SIGQUIT exits with 131, without a core dump; a second Ctrl-C ends it
+at once.
 ";
 
 struct Options {
@@ -229,9 +239,9 @@ fn convert_main(args: Vec<String>) -> ExitCode {
             };
             let skipped = if report.skipped() > 0 { format!(" ({} left out, see the exclusion record)", report.skipped()) } else { String::new() };
             let messages = if report.written() == 1 { "1 message".to_string() } else { format!("{} messages", report.written()) };
-            eprintln!("pstsmith: wrote {messages}{skipped} to {place}");
+            say!("pstsmith: wrote {messages}{skipped} to {place}");
             for warning in report.warnings() {
-                eprintln!("warning: {warning}");
+                say!("warning: {warning}");
             }
             if options.json {
                 println!("{}", report.result_line());
@@ -246,7 +256,7 @@ fn convert_main(args: Vec<String>) -> ExitCode {
             let hint = convert_hint(&error, &options.output);
             let code = fail(error);
             if let Some(hint) = hint {
-                eprintln!("{hint}");
+                say!("{hint}");
             }
             stop.end_by_signal();
             code
@@ -255,9 +265,10 @@ fn convert_main(args: Vec<String>) -> ExitCode {
 }
 
 /// Stops a conversion on SIGTERM, SIGINT (Ctrl-C), SIGQUIT and SIGHUP (on Windows: Ctrl-C). The signal sets the
-/// converter's cancel flag: the conversion fails with `interrupted` before its next message or item and, as on any
-/// error, removes what it created and its staging directory; nothing it did not create is touched. Then the process
-/// ends by the same signal, as if it had not been caught, so that a shell loop stops too. A second signal ends the
+/// converter's cancel flag: the conversion fails with `interrupted` before its next message or item, or in the
+/// attachment it is writing, and, as on any error, removes what it created and its staging directory; nothing it did
+/// not create is touched. Then the process ends by the same signal, as if it had not been caught, so that a shell loop
+/// stops too ([`Stop::end_by_signal`]). A second signal ends the
 /// process at once, without that cleanup. A signal ignored when pstsmith starts (`nohup`, a background job of a
 /// script) stays ignored.
 struct Stop {
@@ -276,21 +287,34 @@ impl Stop {
             if ignored_at_start(number) {
                 continue;
             }
-            // In this order: the first signal finds the flag false and sets it, a second one exits.
+            // In this order: the first signal finds the flag false, stores its number and then sets the flag (so the
+            // number is there when the flag is seen, also when the handler runs on another thread, as on Windows);
+            // a second signal exits.
             let _ = signal_hook::flag::register_conditional_shutdown(number, 128 + number, Arc::clone(&stop.flag));
-            let _ = signal_hook::flag::register(number, Arc::clone(&stop.flag));
             let _ = signal_hook::flag::register_usize(number, Arc::clone(&stop.signal), number as usize);
+            let _ = signal_hook::flag::register(number, Arc::clone(&stop.flag));
         }
         stop
     }
 
-    /// Ends the process by the signal that stopped it, if one came.
+    /// Ends the process by the signal that stopped it, if one came: on Unix by the signal itself, except SIGQUIT, whose
+    /// default action would dump core, with the decoded mail in it (exit status 131 instead); on Windows with
+    /// STATUS_CONTROL_C_EXIT, as an uncaught Ctrl-C ends a program (the C runtime's default action would exit with 3,
+    /// which pstsmith's exit codes give another meaning).
     fn end_by_signal(&self) {
-        let number = self.signal.load(Ordering::SeqCst);
-        if number != 0 {
-            let _ = signal_hook::low_level::emulate_default_handler(number as i32);
-            std::process::exit(128 + number as i32);
+        let number = self.signal.load(Ordering::SeqCst) as i32;
+        if number == 0 {
+            return;
         }
+        #[cfg(unix)]
+        {
+            if number != signal_hook::consts::SIGQUIT {
+                let _ = signal_hook::low_level::emulate_default_handler(number);
+            }
+            std::process::exit(128 + number);
+        }
+        #[cfg(not(unix))]
+        std::process::exit(0xC000_013A_u32 as i32);
     }
 }
 
@@ -318,7 +342,7 @@ fn convert_hint(error: &ConvertError, output: &Output) -> Option<&'static str> {
 }
 
 fn fail(error: ConvertError) -> ExitCode {
-    eprintln!("{}", error.error_line());
+    say!("{}", error.error_line());
     ExitCode::from(error.exit_code)
 }
 

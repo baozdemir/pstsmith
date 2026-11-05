@@ -627,3 +627,26 @@ fn a_takeout_mbox_whose_messages_all_have_labels_leaves_no_empty_folder() {
     assert!(!folders.contains_key(&key(&["All mail Including Spam and Trash"])), "{:?}", folders.keys().collect::<Vec<_>>());
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn a_thunderbird_folder_keeps_its_messages_whatever_their_gmail_labels() {
+    // Takeout mail filed into a Thunderbird folder keeps its X-Gmail-Labels header; the folder the user chose wins
+    // (the labels still become categories). Only an MBOX outside a mail program's tree is routed by its labels.
+    let dir = temp_dir("thunderbird-labels");
+    let profile = dir.join("Local Folders");
+    write(&profile.join("Clients"), format!("From - Mon Jan  1 10:00:00 2024\r\nX-Gmail-Labels: Inbox,Projects\r\n{}", eml("filed")).as_bytes());
+    write(&profile.join("Clients.msf"), b"// index, not mail");
+    write(&profile.join("Clients.sbd/Old"), format!("From - Mon Jan  1 10:00:00 2024\r\nX-Gmail-Labels: Archived\r\n{}", eml("older")).as_bytes());
+    // An empty Apple Mail mailbox is a folder too.
+    write(&dir.join("Apple/Empty.mbox/mbox"), b"");
+    let output = dir.join("out.pst");
+    convert(&[&profile, &dir.join("Apple")], &output);
+    let folders = tree(&output);
+    assert_eq!(folders[&key(&["Clients"])], vec!["filed"]);
+    assert_eq!(folders[&key(&["Clients", "Old"])], vec!["older"]);
+    // (Every store has an Inbox; the labelled messages must not be in it.)
+    assert!(folders.get(&key(&["Inbox"])).is_none_or(|messages| messages.is_empty()), "{folders:?}");
+    // A directory given as input names no folder of its own; its mailboxes are folders at the top.
+    assert_eq!(folders[&key(&["Empty"])], Vec::<String>::new());
+    std::fs::remove_dir_all(&dir).unwrap();
+}

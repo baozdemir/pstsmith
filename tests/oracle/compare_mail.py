@@ -12,6 +12,7 @@ statement of MS-OXCMAIL 2.2.3.7 in Python. `--negative-control` compares one cas
 must find mismatches. Exit 0 only when every compared field matches.
 """
 import base64
+import datetime
 import email
 import email.policy
 import re
@@ -43,20 +44,44 @@ GMAIL_FOLDERS = [("Inbox", "Inbox"), ("Sent", "Sent Items"), ("Drafts", "Drafts"
 
 # ---------- the source side: discovery of messages, independent of pstsmith ----------
 
-FROM_LINE = re.compile(rb"^From \S+ .*\d:\d\d.*\b\d{4}\s*$")
+FROM_LINE = re.compile(rb"^From \S+ .*\d:\d\d.*\b\d{4}\s*(?: remote from \S+\s*)?$")
 HEADER_FIELD = re.compile(rb"^[\x21-\x39\x3b-\x7e]+:")
 
 
+DATE_HEADER = re.compile(
+    r"^(?:(?:mon|tue|wed|thu|fri|sat|sun),?\s+)?(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+(\d{4})\s+"
+    r"(\d{2}):(\d{2})(?::(\d{2}))?(?:\s+([+-]\d{4}|ut|gmt|z|est|edt|cst|cdt|mst|mdt|pst|pdt))?(?:\s+\(.*\))?$",
+    re.IGNORECASE)
+MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+
+
 def date_header_style(line):
-    """Whether a "From " line's words after the sender are a date as in a Date header (a four-digit year, a time, and
-    Python's email.utils reads them)."""
+    """Whether a "From " line's words after the sender are exactly a Date header's date (RFC 5322 3.3): the grammar
+    pstsmith states in converter.rs `date_header_style`, written here as a regular expression and checked with
+    datetime."""
     words = line.decode("utf-8", "replace").split()[2:]
-    if not any(len(w) == 4 and w.isdigit() for w in words) or not any(":" in w and w.replace(":", "").isdigit() for w in words):
+    match = DATE_HEADER.match(" ".join(words))
+    if not match:
+        return False
+    day, month, year, hour, minute, second, zone = match.groups()
+    if not 1900 <= int(year) <= 3000 or int(hour) > 23 or int(minute) > 59 or int(second or 0) > 59:
+        return False
+    if zone and zone[0] in "+-" and int(zone[3:]) > 59:
         return False
     try:
-        return email.utils.parsedate_to_datetime(" ".join(words)) is not None
-    except (TypeError, ValueError, IndexError):
+        datetime.date(int(year), MONTHS.index(month.lower()) + 1, int(day))
+    except ValueError:
         return False
+    return True
+
+
+def _date_rule_self_test():
+    for line, want in [(b"From a Sat, 01 Jan 2024 11:00:00 +0000", True), (b"From a Sat, 01 Jan 2024 11:00:00", True),
+                       (b"From a 1 Jan 2024 11:00 GMT", True), (b"From a Sat, 01 Jan 2024 11:00:00 +0000 (UTC)", True),
+                       (b"From 9:00 to 17:00", False), (b"From our website", False), (b"From me 12:30 today", False),
+                       (b"From John Sat, 01 Jan 2024 11:00:00 +0000 wrote:", False),
+                       (b"From a Sat, 31 Feb 2024 10:00:00 +0000", False), (b"From a Mon Jan  1 10:00:00 2024 +0000", False)]:
+        assert date_header_style(line) == want, line
 
 
 def mbox_messages(path):
@@ -355,6 +380,7 @@ def compare(case, sources, pst):
 
 
 def main():
+    _date_rule_self_test()
     binary = sys.argv[1]
     negative = "--negative-control" in sys.argv[2:]
     problems, compared = [], 0

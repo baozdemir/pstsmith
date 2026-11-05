@@ -149,7 +149,12 @@ fn a_stopped_convert_removes_its_staging_and_output() {
         let child = start_convert("", &mbox, &output, &staging);
         send(&child, signal);
         let result = child.wait_with_output().unwrap();
-        assert_eq!(result.status.signal(), Some(number), "SIG{signal}: {:?}", result.status);
+        if signal == "QUIT" {
+            // SIGQUIT's default action dumps core, which would hold decoded mail: it exits with 128 + 3 instead.
+            assert_eq!((result.status.code(), result.status.signal()), (Some(131), None), "SIGQUIT: {:?}", result.status);
+        } else {
+            assert_eq!(result.status.signal(), Some(number), "SIG{signal}: {:?}", result.status);
+        }
         let stderr = String::from_utf8_lossy(&result.stderr);
         assert!(stderr.lines().next().is_some_and(|line| line.contains("\"error\":\"interrupted\"")), "SIG{signal}: {stderr}");
         let left: Vec<_> = std::fs::read_dir(&staging).unwrap().map(|entry| entry.unwrap().path()).collect();
@@ -193,6 +198,70 @@ fn a_stopped_convert_leaves_files_it_did_not_create() {
     let result = child.wait_with_output().unwrap();
     assert!(!result.status.success());
     assert_eq!(std::fs::read(&output).unwrap(), b"another program's file");
+    assert_eq!(std::fs::read_dir(&staging).unwrap().count(), 0);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Stopped while it writes one large file (the last batch, or a mailbox of fewer messages than a batch holds), a
+/// conversion still removes its output: an attachment being written stops the commit.
+#[cfg(unix)]
+#[test]
+fn a_convert_stopped_while_writing_its_file_removes_it() {
+    use std::io::Write;
+    use std::os::unix::process::ExitStatusExt;
+    let dir = temp_dir("convert-stopped-writing");
+    let mbox = dir.join("Big.mbox");
+    let mut file = std::io::BufWriter::new(std::fs::File::create(&mbox).unwrap());
+    let line = "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ejAxMjM0NTY3\n";
+    for index in 0..40 {
+        write!(file, "From a Mon Jan  1 10:00:00 2024\nFrom: a@example.invalid\nSubject: part {index}\nMIME-Version: 1.0\n\
+                      Content-Type: multipart/mixed; boundary=b\n\n--b\nContent-Type: text/plain\n\nbody\n--b\n\
+                      Content-Type: application/octet-stream; name=data.bin\nContent-Transfer-Encoding: base64\n\n").unwrap();
+        for _ in 0..(6 << 20) / line.len() {
+            file.write_all(line.as_bytes()).unwrap();
+        }
+        file.write_all(b"--b--\n\n").unwrap();
+    }
+    drop(file);
+    let staging = dir.join("staging");
+    std::fs::create_dir(&staging).unwrap();
+    let output = dir.join("out.pst");
+    let child = Command::new(env!("CARGO_BIN_EXE_pstsmith"))
+        .args(["convert", mbox.to_str().unwrap(), "-o", output.to_str().unwrap(), "--temp-dir", staging.to_str().unwrap()])
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let started = std::time::Instant::now();
+    while !output.exists() {
+        assert!(started.elapsed() < std::time::Duration::from_secs(120), "the output never appeared");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    send(&child, "INT");
+    let result = child.wait_with_output().unwrap();
+    assert_eq!(result.status.signal(), Some(2), "{:?}: {}", result.status, String::from_utf8_lossy(&result.stderr));
+    assert!(!output.exists(), "the output was left behind");
+    assert_eq!(std::fs::read_dir(&staging).unwrap().count(), 0);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// With stderr gone (a closed terminal, a pipe whose reader exited), a stopped conversion still cleans up and ends by
+/// the signal instead of panicking on the error line.
+#[cfg(unix)]
+#[test]
+fn a_convert_stopped_with_stderr_closed_still_ends_by_the_signal() {
+    use std::os::unix::process::ExitStatusExt;
+    let dir = temp_dir("convert-stopped-epipe");
+    let mbox = dir.join("Big.mbox");
+    big_mbox(&mbox);
+    let staging = dir.join("staging");
+    std::fs::create_dir(&staging).unwrap();
+    let output = dir.join("out.pst");
+    let mut child = start_convert("", &mbox, &output, &staging);
+    drop(child.stderr.take());
+    send(&child, "TERM");
+    let status = child.wait().unwrap();
+    assert_eq!(status.signal(), Some(15), "{status:?}");
+    assert!(!output.exists());
     assert_eq!(std::fs::read_dir(&staging).unwrap().count(), 0);
     std::fs::remove_dir_all(&dir).unwrap();
 }

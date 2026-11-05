@@ -94,13 +94,15 @@ impl Report {
     }
 }
 
-/// Why a conversion failed. Carries no message content: no subjects, bodies, recipient names or file names.
+/// Why a conversion failed. Carries no message content: no subjects, bodies or recipient names. The manifest conversion
+/// names no file either; the mail converter's input errors name the input path, for the person who gave it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConvertError {
     /// The error code, for example `invalid-manifest`, `output-exists`, `source-mismatch` or `writer`.
     pub code: &'static str,
     /// The command line's exit code for it: 2 invalid input, 3 an attachment that does not match its recorded size or
-    /// hash, 4 an output path that exists, 5 a writer or I/O failure.
+    /// hash, 4 an output path that exists, 5 a writer or I/O failure, 130 a conversion stopped (`interrupted`; the
+    /// command line then ends by the signal that stopped it).
     pub exit_code: u8,
     /// The item concerned, if the error belongs to one item.
     pub item_key: Option<String>,

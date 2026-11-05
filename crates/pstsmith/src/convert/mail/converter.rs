@@ -53,8 +53,8 @@ impl Converter {
     ///
     /// # Errors
     ///
-    /// `output-exists` when `output` or the exclusion record path exists; `io` when the staging directory cannot be
-    /// created.
+    /// `output-exists` when `output` or the exclusion record path exists; `io` when the directory of either is missing
+    /// or not a directory, or the staging directory cannot be created.
     pub fn create(output: Output, options: &ManifestOptions) -> Result<Self, ConvertError> {
         Self::create_in(output, options, &std::env::temp_dir())
     }
@@ -76,8 +76,16 @@ impl Converter {
         }
         // Found now, not after the whole input is staged.
         for target in std::iter::once(path).chain(options.excluded.as_ref()) {
-            if let Some(parent) = target.parent().filter(|parent| !parent.as_os_str().is_empty() && !parent.is_dir()) {
-                return Err(error("io", 5, format!("the directory {} does not exist", parent.display())));
+            if let Some(parent) = target.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+                let problem = match fs::metadata(parent) {
+                    Ok(metadata) if metadata.is_dir() => None,
+                    Ok(_) => Some("is not a directory".to_string()),
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => Some("does not exist".to_string()),
+                    Err(e) => Some(format!("cannot be reached: {e}")),
+                };
+                if let Some(problem) = problem {
+                    return Err(error("io", 5, format!("the output's directory {} {problem}", parent.display())));
+                }
             }
         }
         let staging = Staging::create(temp_dir).map_err(io_error)?;
@@ -104,9 +112,10 @@ impl Converter {
         &self.staging.dir
     }
 
-    /// Stops the conversion once `flag` is true, for example from a signal handler: the next message added, or the
-    /// next item [`finish`](Converter::finish) writes, fails with `interrupted`. As on any error, `finish` removes the
-    /// files it created, and dropping the converter removes the staging directory; nothing else is touched.
+    /// Stops the conversion once `flag` is true, for example from a signal handler: the next message added, the next
+    /// item [`finish`](Converter::finish) writes, or the attachment being written fails with `interrupted`, and the
+    /// writer goes back to its last commit. As on any error, `finish` removes the files it created, and dropping the
+    /// converter removes the staging directory; nothing else is touched.
     pub fn set_cancel_flag(&mut self, flag: Arc<AtomicBool>) {
         self.cancel = Some(flag);
     }
@@ -129,7 +138,8 @@ impl Converter {
     ///
     /// # Errors
     ///
-    /// `input-unreadable` (exit 2) when the input cannot be read; `io` when staging fails.
+    /// `input-unreadable` (exit 2) when the input cannot be read; `input-unsupported` (exit 2) for a PST file;
+    /// `interrupted` once the cancel flag is set; `io` when staging fails.
     pub fn add_path(&mut self, input: &Path) -> Result<(), ConvertError> {
         let metadata = fs::metadata(input).map_err(|e| error("input-unreadable", 2, format!("{}: {e}", input.display())))?;
         // An input such as ".", ".." or "/" has no name of its own: the directory it stands for gives it.
@@ -147,7 +157,8 @@ impl Converter {
             Err(error("input-unsupported", 2, format!("{}: a PST file is not mail input; pstsmith writes PST files from mail", input.display())))
         } else if is_mbox(input).map_err(|e| unreadable(input, e))? {
             let folder = vec![mbox_folder_name(&name)];
-            self.add_mbox(input, &name, &folder)
+            let routed = labels_route(input);
+            self.add_mbox(input, &name, &folder, routed)
         } else {
             let parent = input.canonicalize().ok().and_then(|path| path.parent().map(file_name)).filter(|name| !name.is_empty());
             let folder = vec![parent.unwrap_or_else(|| "Imported".to_string())];
@@ -160,7 +171,8 @@ impl Converter {
     ///
     /// # Errors
     ///
-    /// `invalid-input` (exit 2) for an empty folder path or name; `io` when staging fails.
+    /// `invalid-input` (exit 2) for an empty folder path or name; `interrupted` once the cancel flag is set; `io` when
+    /// staging fails.
     pub fn add_eml(&mut self, folder: &[&str], raw: &[u8]) -> Result<(), ConvertError> {
         if folder.is_empty() || folder.iter().any(|name| name.is_empty()) {
             return Err(error("invalid-input", 2, "folder must be a non-empty list of non-empty names"));
@@ -174,9 +186,10 @@ impl Converter {
     ///
     /// # Errors
     ///
-    /// `empty-selection` when no message and no folder was found; the errors of
-    /// [`convert_manifest`](crate::convert::convert_manifest).
+    /// `empty-selection` when no message and no folder was found; `interrupted` once the cancel flag is set; the errors
+    /// of [`convert_manifest`](crate::convert::convert_manifest).
     pub fn finish(mut self) -> Result<Report, ConvertError> {
+        self.cancelled()?;
         self.items.flush().map_err(io_error)?;
         if self.folders.is_empty() {
             return Err(error("empty-selection", 2, "no message or mail folder found in the inputs"));
@@ -222,13 +235,20 @@ impl Converter {
     }
 
     fn add_message(&mut self, raw: &[u8], container: &str, folder: &[String], mbox_date: Option<i64>, seen: Option<bool>, draft: bool) -> Result<(), ConvertError> {
+        self.add_routed(raw, container, folder, mbox_date, seen, draft, true)
+    }
+
+    /// As `add_message`; `routed` false keeps the message in `folder` whatever its Gmail labels (they still become
+    /// categories).
+    #[allow(clippy::too_many_arguments)]
+    fn add_routed(&mut self, raw: &[u8], container: &str, folder: &[String], mbox_date: Option<i64>, seen: Option<bool>, draft: bool, routed: bool) -> Result<(), ConvertError> {
         self.cancelled()?;
         let ordinal = self.ordinals.entry(container.to_string()).or_insert(0);
         *ordinal += 1;
         let origin = Origin { container: container.to_string(), ordinal: *ordinal, mbox_date, seen, draft };
         let item_key = format!("{container}#{}", origin.ordinal);
         let MailItem { message, folder: label_folder, warnings } = message_from_mime(raw, &origin, &mut self.staging).map_err(io_error)?;
-        let folder = label_folder.map(|name| vec![name]).unwrap_or_else(|| folder.to_vec());
+        let folder = label_folder.filter(|_| routed).map(|name| vec![name]).unwrap_or_else(|| folder.to_vec());
         for depth in 1..=folder.len() {
             self.folders.insert(folder[..depth].to_vec());
         }
@@ -243,11 +263,17 @@ impl Converter {
         Ok(())
     }
 
-    /// The messages of an MBOX file, in `folder` unless their Gmail labels say otherwise. An MBOX without a message is
-    /// a folder still (Thunderbird keeps an empty folder as an empty file, or one of deleted messages only); one whose
-    /// every message has a label adds no folder of its own (Google Takeout's "All mail Including Spam and Trash").
-    fn add_mbox(&mut self, path: &Path, container: &str, folder: &[String]) -> Result<(), ConvertError> {
+    /// The messages of an MBOX file, in `folder`; with `routed`, in the folders their Gmail labels name, and then an
+    /// MBOX whose every message has a label adds no folder of its own (Google Takeout's "All mail Including Spam and
+    /// Trash"). An MBOX without a message is a folder still (Thunderbird keeps an empty folder as an empty file, or one
+    /// of deleted messages only).
+    fn add_mbox(&mut self, path: &Path, container: &str, folder: &[String], routed: bool) -> Result<(), ConvertError> {
         let before = self.count;
+        if !routed {
+            for depth in 1..=folder.len() {
+                self.folders.insert(folder[..depth].to_vec());
+            }
+        }
         let file = File::open(path).map_err(|e| unreadable(path, e))?;
         let mut entries = MboxEntries { reader: BufReader::new(file), line: Vec::new(), ahead: Vec::new(), pending: None, first: true };
         while let Some(entry) = entries.next_entry().map_err(|e| unreadable(path, e))? {
@@ -257,7 +283,7 @@ impl Converter {
                 self.expunged += 1;
                 continue;
             }
-            self.add_message(raw, container, folder, date, None, false)?;
+            self.add_routed(raw, container, folder, date, None, false, routed)?;
         }
         if self.count == before {
             for depth in 1..=folder.len() {
@@ -330,15 +356,17 @@ impl Converter {
                 }
             } else if entry.is_file() {
                 let here = if folder.is_empty() { vec![top.to_string()] } else { folder.to_vec() };
-                let empty_thunderbird_folder =
-                    fs::metadata(&entry).is_ok_and(|metadata| metadata.len() == 0) && dir.join(format!("{name}.msf")).is_file();
+                let empty = fs::metadata(&entry).is_ok_and(|metadata| metadata.len() == 0);
+                // An empty mailbox: Thunderbird's file beside its index, Apple Mail's `Name.mbox/mbox`.
+                let empty_mail_folder = empty && (dir.join(format!("{name}.msf")).is_file() || (name == "mbox" && file_name(dir).ends_with(".mbox")));
                 if name.to_ascii_lowercase().ends_with(".eml") {
                     let raw = fs::read(&entry).map_err(|e| unreadable(&entry, e))?;
                     self.add_message(&raw, &entry_container, &here, None, None, false)?;
-                } else if empty_thunderbird_folder || is_mbox(&entry).map_err(|e| unreadable(&entry, e))? {
+                } else if empty_mail_folder || is_mbox(&entry).map_err(|e| unreadable(&entry, e))? {
                     // Apple Mail keeps a mailbox as `Name.mbox/mbox`: the folder is the directory's.
                     let target = if name == "mbox" { here } else { [folder, &[mbox_folder_name(&name)][..]].concat() };
-                    self.add_mbox(&entry, &entry_container, &target)?;
+                    let routed = labels_route(&entry);
+                    self.add_mbox(&entry, &entry_container, &target, routed)?;
                 } else {
                     self.skipped_files += 1;
                 }
@@ -468,25 +496,79 @@ impl<R: BufRead> MboxEntries<R> {
     }
 }
 
-/// A "From " line whose date is written as in a Date header ("From sender Sat, 01 Jan 2024 11:00:00 +0000"): its date,
-/// when the words after the sender have a four-digit year and a time and mail-parser reads them as an RFC 5322 date.
+/// A "From " line whose date is written as in a Date header (RFC 5322 3.3), "From sender Sat, 01 Jan 2024 11:00:00
+/// +0000": its date, when the words after the sender are exactly `[day-of-week[,]] day month year hh:mm[:ss] [zone]
+/// [(comment)]`, the zone `+hhmm`/`-hhmm` or a name RFC 5322 4.3 lists (none is UTC), the year 1900 to 3000, and the
+/// date exists. Anything else, such as a body line that only starts like a date, is no such line. The oracle
+/// (`tests/oracle/compare_mail.py`, `date_header_style`) states the same grammar as a regular expression.
 fn date_header_style(line: &[u8]) -> Option<i64> {
-    let text = std::str::from_utf8(line).ok()?.trim_end();
-    let (_, date) = text.strip_prefix("From ")?.trim_start().split_once(char::is_whitespace)?;
-    let words: Vec<&str> = date.split_whitespace().collect();
-    let year = words.iter().any(|word| word.len() == 4 && word.bytes().all(|byte| byte.is_ascii_digit()));
-    let time = words.iter().any(|word| word.contains(':') && word.bytes().all(|byte| byte.is_ascii_digit() || byte == b':'));
-    if !year || !time {
+    let text = String::from_utf8_lossy(line);
+    let (_, date) = text.trim_end().strip_prefix("From ")?.trim_start().split_once(char::is_whitespace)?;
+    let mut words: Vec<&str> = date.split_whitespace().collect();
+    if let Some(at) = words.iter().position(|word| word.starts_with('(')) {
+        // A comment, last: "(UTC)", "(Coordinated Universal Time)".
+        if !words.last().is_some_and(|word| word.ends_with(')')) {
+            return None;
+        }
+        words.truncate(at);
+    }
+    let mut words = words.into_iter().peekable();
+    const DAYS: [&str; 7] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+    if words.peek().is_some_and(|word| DAYS.contains(&word.trim_end_matches(',').to_ascii_lowercase().as_str())) {
+        words.next();
+    }
+    let day: u8 = words.next().filter(|word| (1..=2).contains(&word.len()))?.parse().ok()?;
+    const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    let month = MONTHS.iter().position(|month| words.peek().is_some_and(|word| word.eq_ignore_ascii_case(month)))? as u8 + 1;
+    words.next();
+    let year: u16 = words.next().filter(|word| word.len() == 4)?.parse().ok()?;
+    let clock: Vec<&str> = words.next()?.split(':').collect();
+    if !(2..=3).contains(&clock.len()) || clock.iter().any(|part| part.len() != 2 || !part.bytes().all(|byte| byte.is_ascii_digit())) {
         return None;
     }
-    mail_parser::DateTime::parse_rfc822(date.trim()).filter(mail_parser::DateTime::is_valid).map(|date| date.to_timestamp())
+    let part = |index: usize| clock.get(index).map_or(Some(0), |part| part.parse::<u8>().ok());
+    let (hour, minute, second) = (part(0)?, part(1)?, part(2)?);
+    let (before_gmt, tz_hour, tz_minute) = match words.next() {
+        None => (false, 0, 0),
+        Some(zone) if (zone.starts_with('+') || zone.starts_with('-')) && zone.len() == 5 && zone[1..].bytes().all(|byte| byte.is_ascii_digit()) => {
+            (zone.starts_with('-'), zone[1..3].parse().ok()?, zone[3..].parse().ok()?)
+        }
+        Some(zone) => match zone.to_ascii_uppercase().as_str() {
+            "UT" | "GMT" | "Z" => (false, 0, 0),
+            "EST" => (true, 5, 0),
+            "EDT" => (true, 4, 0),
+            "CST" => (true, 6, 0),
+            "CDT" => (true, 5, 0),
+            "MST" => (true, 7, 0),
+            "MDT" => (true, 6, 0),
+            "PST" => (true, 8, 0),
+            "PDT" => (true, 7, 0),
+            _ => return None,
+        },
+    };
+    if words.next().is_some() || !(1900..=3000).contains(&year) || hour > 23 || minute > 59 || second > 59 || tz_minute > 59 {
+        return None;
+    }
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let days_in_month = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][usize::from(month) - 1];
+    if day == 0 || day > days_in_month {
+        return None;
+    }
+    let date = mail_parser::DateTime { year, month, day, hour, minute, second, tz_before_gmt: before_gmt, tz_hour, tz_minute };
+    date.is_valid().then(|| date.to_timestamp())
 }
 
 /// An MBOX "From " line's date: `Some(date)` when the line has a sender, a time and a four-digit year at its end
 /// ("From sender Mon Jan  1 10:00:00 2024", also with a time zone before the year), `Some(None)` when its date cannot
 /// be read, `None` when the line is no MBOX "From " line.
 fn from_line_date(line: &[u8]) -> Option<Option<i64>> {
-    let text = std::str::from_utf8(line).ok()?.trim_end();
+    // A sender need not be UTF-8 (a Latin-1 address); UUCP's mailers end the line with "remote from host".
+    let text = String::from_utf8_lossy(line);
+    let text = text.trim_end();
+    let text = match text.rsplit_once(" remote from ") {
+        Some((head, host)) if !host.is_empty() && !host.contains(char::is_whitespace) => head,
+        _ => text,
+    };
     let mut words = text.strip_prefix("From ")?.split_whitespace();
     words.next()?;
     let rest: Vec<&str> = words.collect();
@@ -546,6 +628,15 @@ fn sorted_entries(dir: &Path) -> io::Result<Vec<PathBuf>> {
 
 fn is_maildir(dir: &Path) -> bool {
     dir.join("cur").is_dir() && dir.join("new").is_dir()
+}
+
+/// Whether an MBOX's Gmail labels choose its messages' folders: yes for an MBOX on its own (Google Takeout), no for a
+/// mail program's folder, where the user filed the messages (Thunderbird's file beside its `.msf` index or inside a
+/// `.sbd` directory, Apple Mail's `Name.mbox/mbox`).
+fn labels_route(path: &Path) -> bool {
+    let name = file_name(path);
+    let parent = path.parent().map(file_name).unwrap_or_default();
+    !(path.with_file_name(format!("{name}.msf")).is_file() || parent.ends_with(".sbd") || (name == "mbox" && parent.ends_with(".mbox")))
 }
 
 /// A PST file starts with the magic "!BDN" (MS-PST 2.2.2.6).
@@ -652,9 +743,42 @@ mod tests {
     fn date_header_style_reads_only_dates() {
         assert_eq!(date_header_style(b"From a@example.invalid Sat, 01 Jan 2024 11:00:00 +0000\n"), Some(1_704_106_800));
         assert_eq!(date_header_style(b"From a@example.invalid Mon, 1 Jan 2024 10:00:00 -0500\r\n"), Some(1_704_121_200));
-        for body in ["From 9:00 to 17:00\r\n", "From our website\r\n", "From me 12:30 today\n", "From here on 2024\n", "From a Mon Jan 1\n"] {
+        // Without a zone (taken as UTC), without seconds, with a comment after the zone.
+        assert_eq!(date_header_style(b"From a Sat, 01 Jan 2024 11:00:00\n"), Some(1_704_106_800));
+        assert_eq!(date_header_style(b"From a 1 Jan 2024 11:00 GMT\n"), Some(1_704_106_800));
+        assert_eq!(date_header_style(b"From a Sat, 01 Jan 2024 11:00:00 +0000 (UTC)\n"), Some(1_704_106_800));
+        for body in [
+            "From 9:00 to 17:00\r\n",
+            "From our website\r\n",
+            "From me 12:30 today\n",
+            "From here on 2024\n",
+            "From a Mon Jan 1\n",
+            // A line in a body that only starts like a date.
+            "From John Sat, 01 Jan 2024 11:00:00 +0000 wrote:\n",
+            // No such day.
+            "From a Sat, 31 Feb 2024 10:00:00 +0000\n",
+            // asctime with a zone after the year is the MBOX form, not a Date header's.
+            "From a Mon Jan  1 10:00:00 2024 +0000\n",
+        ] {
             assert_eq!(date_header_style(body.as_bytes()), None, "{body:?}");
         }
+    }
+
+    #[test]
+    fn from_line_dates() {
+        let date = |line: &str| from_line_date(line.as_bytes());
+        assert_eq!(date("From a Mon Jan  1 10:00:00 2024\n"), Some(Some(1_704_103_200)));
+        // UUCP's "remote from" and a sender that is not UTF-8 (Latin-1).
+        assert_eq!(date("From a Mon Jan  1 10:00:00 2024 remote from host\n"), Some(Some(1_704_103_200)));
+        assert_eq!(from_line_date(b"From j\xfcrgen@example.invalid Mon Jan  1 10:00:00 2024\n"), Some(Some(1_704_103_200)));
+    }
+
+    #[test]
+    fn an_mbox_entry_with_a_zone_after_the_year_takes_no_misread_date() {
+        let text = "From a Mon Jan  1 10:00:00 2024 +0000\nSubject: one\n\nbody\n";
+        let mut entries = MboxEntries { reader: io::Cursor::new(text.as_bytes()), line: Vec::new(), ahead: Vec::new(), pending: None, first: true };
+        let (_, date) = entries.next_entry().unwrap().unwrap();
+        assert_eq!(date, None, "the Date header gives the time, not a misread From line");
     }
 
     #[cfg(unix)]

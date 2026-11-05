@@ -15,7 +15,8 @@ pstsmith --help
 (`--max-file-size`); `--output-dir` writes as many parts as needed. An error is the first line on stderr, as JSON; the
 exit code says what failed (2 invalid input, 3 an attachment that does not match its recorded size or hash, 4 an
 output that exists, 5 a writer or I/O failure). A conversion stopped by Ctrl-C removes what it wrote, reports
-`interrupted` and ends by the signal (exit status 128 plus its number).
+`interrupted` and ends by the signal (a shell shows exit status 128 plus its number; on Windows the exit code is
+STATUS_CONTROL_C_EXIT).
 
 The library is the [`pstsmith`](https://crates.io/crates/pstsmith) crate; see the
 [repository](https://github.com/baozdemir/pstsmith) for how its output was verified.

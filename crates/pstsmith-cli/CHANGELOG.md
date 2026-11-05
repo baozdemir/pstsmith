@@ -11,6 +11,6 @@ All notable changes to the pstsmith command line are recorded here, in the forma
 - `pstsmith convert INPUT...` for EML files, MBOX files, Maildir directories and Thunderbird or Apple Mail folders,
   with `-o`/`--output`, `--output-dir` and `--max-file-size`, `--excluded`, `--temp-dir` and `--json`. A conversion
   that does not fit one file says that `--output-dir` writes as many parts as needed. Stopped by Ctrl-C (on Unix also
-  SIGTERM, SIGQUIT or SIGHUP), it removes what it created and its staging directory and ends by the signal; a
-  signal ignored at start (`nohup`) stays ignored.
+  SIGTERM, SIGQUIT or SIGHUP), it removes what it created and its staging directory, also while it writes a file,
+  and ends by the signal (SIGQUIT: exit 131, no core dump); a signal ignored at start (`nohup`) stays ignored.
 - `pstsmith --manifest ITEMS.jsonl` for the JSONL manifest format, `--help` and `--version`.

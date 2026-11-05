@@ -1132,6 +1132,14 @@ impl Read for VerifiedAttachment {
         if self.verified {
             return Ok(0);
         }
+        // A stop ends the commit that is writing this attachment: the writer cuts back to its last commit.
+        if stop_requested() {
+            let mut failure = self.failure.borrow_mut();
+            if failure.is_none() {
+                *failure = Some(stopped());
+            }
+            return Err(io::Error::other("the conversion was stopped"));
+        }
         if self.seen == self.size {
             self.finish()?;
             return Ok(0);
@@ -1661,6 +1669,7 @@ fn flush(rows: &[Item], sink: &mut Sink, unsupported: &mut Unsupported) -> Resul
         }
     }
     for (folder_path, members) in groups {
+        check_stop()?;
         let folder: Vec<&str> = folder_path.iter().map(String::as_str).collect();
         sink.append(&folder, &members, &messages, &payload, rows, &failure)?;
     }
@@ -1744,11 +1753,36 @@ impl ExclusionRecord {
     }
 }
 
+thread_local! {
+    /// The running conversion's cancel flag (`Options::cancel`), for the attachment readers the writer drives.
+    static CANCEL: RefCell<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>> = const { RefCell::new(None) };
+}
+
+/// Whether the running conversion was asked to stop.
+fn stop_requested() -> bool {
+    CANCEL.with(|cancel| cancel.borrow().as_ref().is_some_and(|flag| flag.load(std::sync::atomic::Ordering::SeqCst)))
+}
+
+fn stopped() -> Failure {
+    Failure::new("interrupted", 130, None, "the conversion was stopped")
+}
+
+fn check_stop() -> Result<(), Failure> {
+    if stop_requested() {
+        return Err(stopped());
+    }
+    Ok(())
+}
+
 /// Converts, and on failure removes what this attempt created: the output files, their directory and the exclusion
 /// record, so no partial artifact is left behind.
 pub(crate) fn run(options: &Options) -> Result<serde_json::Value, Failure> {
     let mut created = Created::default();
-    convert(options, &mut created).inspect_err(|_| {
+    CANCEL.with(|cancel| *cancel.borrow_mut() = options.cancel.clone());
+    // A stop shows as whatever failure it caused (the writer's, an attachment's); it is reported as the stop.
+    let result = convert(options, &mut created).map_err(|failure| if stop_requested() { stopped() } else { failure });
+    CANCEL.with(|cancel| *cancel.borrow_mut() = None);
+    result.inspect_err(|_| {
         for path in &created.files {
             let _ = fs::remove_file(path);
         }
@@ -1938,9 +1972,7 @@ fn convert_items(options: &Options, reader: &mut ManifestReader, sink: &mut Sink
     let payload_cap = if directory { sink.limit.map(|limit| limit / 64) } else { None };
     let mut used: BTreeSet<Vec<String>> = BTreeSet::new();
     while let Some(line) = reader.next_line()? {
-        if options.cancel.as_ref().is_some_and(|stop| stop.load(std::sync::atomic::Ordering::SeqCst)) {
-            return Err(Failure::new("interrupted", 130, None, "the conversion was stopped"));
-        }
+        check_stop()?;
         line_number += 1;
         let line = line.trim_end_matches(['\r', '\n']);
         if line.trim().is_empty() {
@@ -1993,6 +2025,7 @@ fn convert_items(options: &Options, reader: &mut ManifestReader, sink: &mut Sink
         rows_payload += payload;
         rows.push(item);
     }
+    check_stop()?;
     if !rows.is_empty() {
         flush(&rows, sink, &mut unsupported)?;
         batches += 1;
@@ -2031,6 +2064,7 @@ fn convert_items(options: &Options, reader: &mut ManifestReader, sink: &mut Sink
             }
         }
     }
+    check_stop()?;
     if let Some(writer) = sink.writer.take() {
         writer.close().map_err(|error| Failure::new("writer", 5, None, error.to_string()))?;
     }

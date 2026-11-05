@@ -125,8 +125,12 @@ def mail():
     write(tb / "Inbox.sbd" / "Work", ("From - Tue Jan  2 10:00:00 2024\nX-Mozilla-Status: 0001\n" + eml("At work") + "\n").encode())
     write(MAIL / "apple" / "Export" / "Clients.mbox" / "mbox", ("From sender@example.invalid Mon Jan  1 10:00:00 2024\n" + eml("Apple Mail") + "\n").encode())
     write(MAIL / "apple" / "Export" / "Clients.mbox" / "Info.plist", b"<?xml version=\"1.0\"?>\n<plist version=\"1.0\"><dict/></plist>\n")
-    write(MAIL / "crlf" / "Windows.mbox", crlf("From sender@example.invalid Mon Jan  1 10:00:00 2024\n" + eml("CRLF one") + "\n"
-                                                "From sender@example.invalid Mon Jan  1 11:00:00 2024\n" + eml("CRLF two") + "\n"))
+    # A body line that only looks like a From line stays in its message; a From line whose date is written as in a
+    # Date header, after a blank line and before a header field, starts one.
+    write(MAIL / "crlf" / "Windows.mbox", crlf("From sender@example.invalid Mon Jan  1 10:00:00 2024\n"
+                                                + eml("CRLF one", "Hours:\n\nFrom 9:00 to 17:00\nLocation:Room 5\n") + "\n"
+                                                "From sender@example.invalid Mon Jan  1 11:00:00 2024\n" + eml("CRLF two") + "\n"
+                                                "From sender@example.invalid Tue, 02 Jan 2024 09:00:00 +0000\n" + eml("CRLF Date-style separator") + "\n"))
     md = MAIL / "maildir" / "Maildir"
     # Maildir++ also writes "!2," where ':' is not allowed in a file name (Windows); both are read.
     write(md / "cur" / "1704103200.1.host!2,S", eml("Maildir seen"))
