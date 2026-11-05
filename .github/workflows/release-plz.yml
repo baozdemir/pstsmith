@@ -3,11 +3,19 @@
 # publishes the crates through crates.io trusted publishing, tags vX.Y.Z and creates the GitHub release as a draft;
 # then this workflow calls release.yml, which attaches the binaries and publishes the release. (A tag or release made
 # with the workflow's own token starts no other workflow, so release.yml is called here, not triggered by the release.)
+# The first release, whose crates the maintainer publishes by hand, runs from here too (workflow_dispatch with its
+# tag): npm's trusted publishing checks the calling workflow's name, so every release calls release.yml from this file.
 name: Release-plz
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag vX.Y.Z whose draft release receives the binaries (the first release, RELEASING.md)
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -15,7 +23,7 @@ permissions:
 jobs:
   release-pr:
     name: Release pull request
-    if: ${{ vars.RELEASE_ENABLED == 'true' }}
+    if: ${{ vars.RELEASE_ENABLED == 'true' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -38,7 +46,7 @@ jobs:
 
   release:
     name: Publish
-    if: ${{ vars.RELEASE_ENABLED == 'true' }}
+    if: ${{ vars.RELEASE_ENABLED == 'true' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -79,4 +87,16 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       tag: ${{ needs.release.outputs.tag }}
+    secrets: inherit
+
+  first-release:
+    name: Binaries of a release made by hand
+    if: ${{ vars.RELEASE_ENABLED == 'true' && github.event_name == 'workflow_dispatch' }}
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ inputs.tag }}
     secrets: inherit

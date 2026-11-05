@@ -1,18 +1,12 @@
 # The binaries of a release vX.Y.Z whose GitHub release is still a draft: built from the tag for every target, each
 # archive attested (build provenance) and attached to the draft, which is then published (an immutable release takes
 # no assets once published); then the npm packages and, when the maintainer has set the HOMEBREW_TAP_TOKEN secret,
-# the Homebrew formula in baozdemir/homebrew-tap. Called by release-plz.yml; run by hand for the first release
-# (RELEASING.md).
+# the Homebrew formula in baozdemir/homebrew-tap. Called only by release-plz.yml (also for the first release), so npm's
+# trusted publishing sees one calling workflow.
 name: Release binaries
 
 on:
   workflow_call:
-    inputs:
-      tag:
-        description: The release tag, vX.Y.Z, whose draft release receives the archives
-        required: true
-        type: string
-  workflow_dispatch:
     inputs:
       tag:
         description: The release tag, vX.Y.Z, whose draft release receives the archives
@@ -136,13 +130,22 @@ jobs:
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm 11.5.1 or later (docs.npmjs.com/trusted-publishers).
+      - name: npm 11.5.1 or later
+        run: |
+          current=$(npm --version)
+          if [ "$(printf '%s\n' 11.5.1 "$current" | sort -V | head -n 1)" != 11.5.1 ]; then npm install -g npm@11.5.1; fi
+          npm --version
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: archives
           merge-multiple: true
+      # npm tries trusted publishing (OIDC) first and falls back to a token: NPM_TOKEN, an environment secret of
+      # `release`, is needed only for the first publish of a package, before its trusted publisher can be set.
       - name: Platform packages
         env:
           TAG: ${{ inputs.tag }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           version="${TAG#v}"
           mkdir binaries
@@ -160,6 +163,7 @@ jobs:
         working-directory: packages/pstsmith-node
         env:
           TAG: ${{ inputs.tag }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           version="${TAG#v}"
           node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json"));p.version=process.argv[1];for(const k of Object.keys(p.optionalDependencies))p.optionalDependencies[k]=process.argv[1];fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")' "$version"

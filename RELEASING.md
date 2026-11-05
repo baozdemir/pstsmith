@@ -8,8 +8,12 @@ with attested binaries, the npm packages `pstsmith` and `@pstsmith/<platform>`, 
 1. crates.io: publish 0.1.0 by hand from a clean checkout (`cargo publish -p pstsmith`, then `cargo publish -p
    pstsmith-cli`), then add this repository as a trusted publisher of both crates (crates.io > crate > Settings >
    Trusted Publishing: workflow `release-plz.yml`, environment `release`).
-2. npm: create the organisation `pstsmith`; publish the first versions by hand or add the repository as a trusted
-   publisher of `pstsmith` and of each `@pstsmith/<platform>` package (workflow `release.yml`, environment `release`).
+2. npm: create the organisation `pstsmith`. A package's trusted publisher can be set only once the package exists, so
+   the first release publishes with a token: create a granular access token that can publish `pstsmith` and
+   `@pstsmith/*`, and store it as the secret `NPM_TOKEN` of the `release` environment. After the first release, add
+   this repository as the trusted publisher of `pstsmith` and of each `@pstsmith/<platform>` package (workflow
+   `release-plz.yml`: npm checks the calling workflow, and `release.yml` is always called from it; environment
+   `release`), then delete the token and the secret.
 3. GitHub: create the environment `release` (Settings > Environments), optionally with required reviewers; set the
    repository variable `RELEASE_ENABLED` to `true`. Immutable releases can be on: every release is a draft until its
    archives are attached.
@@ -20,7 +24,7 @@ with attested binaries, the npm packages `pstsmith` and `@pstsmith/<platform>`, 
    ```sh
    git tag v0.1.0 && git push origin v0.1.0
    gh release create v0.1.0 --draft --verify-tag --title v0.1.0 --notes-file <notes>
-   gh workflow run release.yml -f tag=v0.1.0
+   gh workflow run release-plz.yml -f tag=v0.1.0
    ```
 
    `release.yml` builds the tag for seven targets, attaches the archives, their attestations and `SHA256SUMS` to the
