@@ -1,7 +1,8 @@
 # Releases, once the repository variable RELEASE_ENABLED is "true" (the maintainer sets it after the first, manual
 # crates.io publish): release-plz opens a release pull request with the version bump and the changelog; merging it
-# publishes the crates through crates.io trusted publishing, tags vX.Y.Z and creates the GitHub release, which starts
-# release.yml.
+# publishes the crates through crates.io trusted publishing, tags vX.Y.Z and creates the GitHub release as a draft;
+# then this workflow calls release.yml, which attaches the binaries and publishes the release. (A tag or release made
+# with the workflow's own token starts no other workflow, so release.yml is called here, not triggered by the release.)
 name: Release-plz
 
 on:
@@ -43,6 +44,8 @@ jobs:
     permissions:
       contents: write
       id-token: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,8 +56,27 @@ jobs:
       - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
         id: auth
       - uses: release-plz/action@8921286633dfa0c4020f7f30bd1c14fe19cbb10e # v0.5.142
+        id: release-plz
         with:
           command: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+      - name: The tag released, if any
+        id: tag
+        env:
+          RELEASES: ${{ steps.release-plz.outputs.releases }}
+        run: echo "tag=$(echo "${RELEASES:-[]}" | jq -r '.[] | select(.package_name == "pstsmith") | .tag')" >> "$GITHUB_OUTPUT"
+
+  binaries:
+    name: Binaries
+    needs: release
+    if: ${{ needs.release.outputs.tag != '' }}
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.release.outputs.tag }}
+    secrets: inherit

@@ -3,13 +3,15 @@
 repo_url = "https://github.com/baozdemir/pstsmith"
 semver_check = true
 
-# The library and the command line share one version and one tag, vX.Y.Z, whose GitHub release starts release.yml.
+# The library and the command line share one version and one tag, vX.Y.Z. Its GitHub release is created as a draft:
+# release.yml attaches the archives and then publishes it (an immutable release takes no assets once published).
 [[package]]
 name = "pstsmith"
 changelog_path = "CHANGELOG.md"
 version_group = "pstsmith"
 git_tag_name = "v{{ version }}"
 git_release_enable = true
+git_release_draft = true
 
 [[package]]
 name = "pstsmith-cli"

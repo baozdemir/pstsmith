@@ -11,17 +11,30 @@ with attested binaries, the npm packages `pstsmith` and `@pstsmith/<platform>`, 
 2. npm: create the organisation `pstsmith`; publish the first versions by hand or add the repository as a trusted
    publisher of `pstsmith` and of each `@pstsmith/<platform>` package (workflow `release.yml`, environment `release`).
 3. GitHub: create the environment `release` (Settings > Environments), optionally with required reviewers; set the
-   repository variable `RELEASE_ENABLED` to `true`.
+   repository variable `RELEASE_ENABLED` to `true`. Immutable releases can be on: every release is a draft until its
+   archives are attached.
 4. Homebrew: create the repository `baozdemir/homebrew-tap` and a fine-grained token with contents write on it only;
-   store it as the secret `HOMEBREW_TAP_TOKEN`.
-5. The first GitHub release: `gh release create v0.1.0 --title v0.1.0 --notes-file <notes>` (release-plz creates the
-   later ones). It starts `release.yml`.
+   store it as the secret `HOMEBREW_TAP_TOKEN` of the `release` environment.
+5. The first GitHub release, after the crates are on crates.io (release-plz makes the later ones):
+
+   ```sh
+   git tag v0.1.0 && git push origin v0.1.0
+   gh release create v0.1.0 --draft --verify-tag --title v0.1.0 --notes-file <notes>
+   gh workflow run release.yml -f tag=v0.1.0
+   ```
+
+   `release.yml` builds the tag for seven targets, attaches the archives, their attestations and `SHA256SUMS` to the
+   draft, publishes it, then publishes the npm packages and the Homebrew formula.
 
 ## Every later release
 
-Merge the pull request release-plz opens: it holds the version bump and the changelog. The merge publishes the crates
-(trusted publishing), tags `vX.Y.Z` and creates the GitHub release, which starts `release.yml`: binaries for seven
-targets, their attestations and `SHA256SUMS`, the npm packages, and the Homebrew formula.
+release-plz opens a pull request with the version bump and the changelog. It opens it with the workflow's own token, and
+GitHub starts no workflow for such a pull request, so CI does not run on it by itself: close and reopen it (or push
+to its branch) to run CI, or give release-plz a GitHub App token as its documentation describes
+(release-plz.ieni.dev/docs/github/token). Merging it publishes the crates (trusted publishing), tags `vX.Y.Z` and
+creates the GitHub release as a draft; `release-plz.yml` then calls `release.yml`, which attaches the binaries for seven
+targets, their attestations and `SHA256SUMS`, publishes the release, and publishes the npm packages and the Homebrew
+formula.
 
 ## Before tagging
 
