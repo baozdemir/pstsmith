@@ -26,3 +26,6 @@ tests/fixtures/manifest/files/large-64MiB.bin
 # npm package
 packages/pstsmith-node/node_modules
 packages/pstsmith-node/dist
+
+# Python bytecode (tests/oracle, tests/fixtures/generate.py)
+__pycache__/
