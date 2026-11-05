@@ -131,8 +131,9 @@ impl Converter {
     }
 
     /// Adds an input, recognised by what it is:
-    /// - an MBOX file (it starts with "From "): its messages go to a folder named after the file, without `.mbox`
-    ///   (Apple Mail's `Name.mbox/mbox`: `Name`);
+    /// - an MBOX file (it starts with "From "): its messages go to a folder named after the file, without `.mbox` or
+    ///   `.mbx` in any case (Apple Mail's `Name.mbox/mbox`: `Name`); an empty mailbox file (Apple Mail's, or
+    ///   Thunderbird's beside its `.msf` index) is an empty folder;
     /// - another file: one message (an `.eml`), in a folder named after its directory;
     /// - a Maildir or Maildir++ directory (it has `cur` and `new`): its messages go to "Inbox", its `.A.B` folders to
     ///   `A/B`;
@@ -158,6 +159,11 @@ impl Converter {
             } else {
                 self.walk(input, &name, &[], &name)
             }
+        } else if metadata.len() == 0 && (apple_mailbox(input).is_some() || input.with_file_name(format!("{name}.msf")).is_file()) {
+            // An empty mailbox is an empty folder, as when its directory is walked: Apple Mail's `Name.mbox/mbox`,
+            // Thunderbird's file beside its index.
+            let folder = vec![apple_mailbox(input).unwrap_or_else(|| mbox_folder_name(&name))];
+            self.add_mbox(input, &name, &folder, false)
         } else if is_pst(input).map_err(|e| unreadable(input, e))? {
             Err(error("input-unsupported", 2, format!("{}: a PST file is not mail input; pstsmith writes PST files from mail", input.display())))
         } else if is_mbox(input).map_err(|e| unreadable(input, e))? {
@@ -568,7 +574,7 @@ const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "au
 
 /// A zone word between the time and the year, as System V's `%Z` writes it: a zone, tzdata's numeric abbreviation
 /// `+hh`/`-hh` ("+03"), or 2 to 5 letters starting with a capital, with two capitals at least, that are not a month
-/// name ("ChST", taken as UTC; a capitalised word such as "Room" is none).
+/// name nor AM or PM ("ChST", taken as UTC; a capitalised word such as "Room" is none).
 fn zone_abbreviation(word: &str) -> Option<(bool, u8, u8)> {
     if let Some(found) = zone(word) {
         return Some(found);
@@ -679,8 +685,10 @@ fn file_name(path: &Path) -> String {
     path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
+/// An MBOX file's folder: its name without `.mbox` or `.mbx`, in any case.
 fn mbox_folder_name(name: &str) -> String {
-    let stem = [".mbox", ".mbx", ".MBOX", ".MBX"].iter().find_map(|ext| name.strip_suffix(ext)).unwrap_or(name);
+    let lower = name.to_ascii_lowercase();
+    let stem = [".mbox", ".mbx"].iter().find(|ext| lower.ends_with(*ext)).map_or(name, |ext| &name[..name.len() - ext.len()]);
     if stem.is_empty() { name.to_string() } else { stem.to_string() }
 }
 

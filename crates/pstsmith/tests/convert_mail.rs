@@ -704,3 +704,23 @@ fn an_apple_mail_mbox_file_given_on_its_own_is_named_after_its_mailbox() {
     assert_eq!(tree(&output)[&key(&["Clients"])], vec!["client"]);
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn an_empty_mailbox_file_given_on_its_own_is_an_empty_folder() {
+    // As when its directory is walked: Apple Mail's empty Name.mbox/mbox, Thunderbird's empty folder beside its index.
+    let dir = temp_dir("empty-mailbox-file");
+    write(&dir.join("E.mbox/mbox"), b"");
+    write(&dir.join("tb/Inbox"), b"");
+    write(&dir.join("tb/Inbox.msf"), b"// index");
+    // MBOX extensions in any case: .mbox and .mbx.
+    write(&dir.join("Bar.Mbox"), format!("From a Mon Jan  1 10:00:00 2024\n{}", eml("bar")).as_bytes());
+    write(&dir.join("Foo.MBX"), format!("From a Mon Jan  1 10:00:00 2024\n{}", eml("foo")).as_bytes());
+    let output = dir.join("out.pst");
+    convert(&[&dir.join("E.mbox/mbox"), &dir.join("tb/Inbox"), &dir.join("Bar.Mbox"), &dir.join("Foo.MBX")], &output);
+    let folders = tree(&output);
+    assert_eq!(folders[&key(&["E"])], Vec::<String>::new());
+    assert_eq!(folders[&key(&["Inbox"])], Vec::<String>::new());
+    assert_eq!(folders[&key(&["Bar"])], vec!["bar"]);
+    assert_eq!(folders[&key(&["Foo"])], vec!["foo"]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}

@@ -8,8 +8,8 @@ build on PYTHONPATH) reads the PST, and Python's `email` parses the MIME. The so
 `crates/pstsmith/src/convert/mail/mime.rs` (written down again here, not imported): body = the non-attachment
 text/plain parts, HTML = the non-attachment text/html parts, every other leaf an attachment with its decoded bytes,
 message/rfc822 parts attached messages. Delivery reports are checked against `report_reference.py`, the reference
-statement of MS-OXCMAIL 2.2.3.7 in Python. `--negative-control` compares one case's source with another case's PST and
-must find mismatches. Exit 0 only when every compared field matches.
+statement of MS-OXCMAIL 2.2.3.7 in Python. `--negative-control` compares each case's source with the next case's PST
+and must find mismatches in each of those neighbouring pairs. Exit 0 only when every compared field matches.
 """
 import base64
 import datetime
@@ -93,7 +93,7 @@ def zone(word):
 
 def zone_abbreviation(word):
     """A zone word between the time and the year (System V's %Z): a zone, +hh/-hh, or 1 to 5 letters starting with a
-    capital, with two capitals at least (so 2 to 5), that are not a month name."""
+    capital, with two capitals at least (so 2 to 5), that are not a month name nor AM or PM."""
     if zone(word):
         return True
     if len(word) == 3 and word[0] in "+-" and digits(word[1:], 2, 2):
@@ -318,6 +318,14 @@ def maildir_messages(path, folder, prefix, out):
             maildir_messages(entry, sub_path, sub_path, out)
 
 
+def mbox_stem(name):
+    """An MBOX file's folder: its name without .mbox or .mbx, in any case."""
+    for ext in (".mbox", ".mbx"):
+        if name.lower().endswith(ext) and len(name) > len(ext):
+            return name[:-len(ext)]
+    return name
+
+
 def is_mbox(path):
     """As pstsmith: the first line that is not empty, after a UTF-8 byte order mark, starts with "From "."""
     start = path.read_bytes()[:4096]
@@ -350,7 +358,7 @@ def source_messages(input_path):
         else:
             walk(input_path, [], name, out)
     elif is_mbox(input_path):
-        stem = name[:-5] if name.lower().endswith(".mbox") else name
+        stem = mbox_stem(name)
         parent = input_path.parent.name if input_path.parent.name not in ("", "..") else input_path.parent.resolve().name
         if name == "mbox" and parent.endswith(".mbox") and len(parent) > 5:
             # Apple Mail's Name.mbox/mbox is the folder Name.
@@ -376,7 +384,7 @@ def walk(directory, folder, top, out):
             if entry.name.lower().endswith(".eml"):
                 out.append((here, entry.read_bytes(), {}))
             elif is_mbox(entry):
-                target = here if entry.name == "mbox" else folder + [entry.name[:-5] if entry.name.lower().endswith(".mbox") else entry.name]
+                target = here if entry.name == "mbox" else folder + [mbox_stem(entry.name)]
                 out += [(target, raw, {"routed": labels_route(entry)}) for raw in mbox_messages(entry)]
 
 
