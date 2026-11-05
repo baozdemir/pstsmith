@@ -72,6 +72,8 @@ the manifest conversion's path unchanged, so the writer checks above apply to it
     1,638 per prefix); a message that needs more is skipped.
   - Exchange compares folder names without case: `Inbox` and `inbox` become one folder (pstsmith keeps them distinct
     and warns).
-- **Report messages in a Microsoft 365 import:** delivery reports (REPORT.IPM.Note.NDR and the like) arrived with
-  their subject reduced to its prefix ("Undeliverable: "). Whether this is Exchange's handling or a property pstsmith
-  should write as Outlook does is being tested; this line will state the result.
+- **Report messages in a Microsoft 365 import:** delivery and read reports (REPORT.IPM.Note.NDR, .DR, .IPNRN and the
+  like) arrive with their subject reduced to its prefix ("Undeliverable:", "Read:"). This is Exchange's handling: a
+  PST classic Outlook wrote itself, imported the same way, shows the same, and so does pstsmith's file written with
+  Outlook's subject prefix marker; ordinary messages keep their subjects. Outlook and other readers of the PST show the
+  whole subject.
