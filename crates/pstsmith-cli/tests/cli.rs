@@ -291,8 +291,35 @@ fn a_json_result_with_stdout_closed_is_an_error_not_a_panic() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// The number of messages in each folder under the IPM subtree, by path.
+fn folders(path: &std::path::Path) -> std::collections::BTreeMap<Vec<String>, usize> {
+    use pstsmith::messaging::store::Store;
+    use pstsmith::ndb::node_id::NodeId;
+    fn walk(store: &std::rc::Rc<dyn Store>, folder: NodeId, path: Vec<String>, out: &mut std::collections::BTreeMap<Vec<String>, usize>) {
+        let opened = store.open_folder(&store.properties().make_entry_id(folder).unwrap()).unwrap();
+        if !path.is_empty() {
+            out.insert(path.clone(), opened.contents_table().map_or(0, |contents| contents.rows_matrix().count()));
+        }
+        if let Some(hierarchy) = opened.hierarchy_table() {
+            for row in hierarchy.rows_matrix() {
+                let child = NodeId::from(u32::from(row.id()));
+                let name = store.open_folder(&store.properties().make_entry_id(child).unwrap()).unwrap().properties().display_name().unwrap();
+                let mut child_path = path.clone();
+                child_path.push(name);
+                walk(store, child, child_path, out);
+            }
+        }
+    }
+    let store = pstsmith::open_store(path).unwrap();
+    let root = store.properties().ipm_sub_tree_entry_id().unwrap().node_id();
+    let mut out = std::collections::BTreeMap::new();
+    walk(&store, root, Vec::new(), &mut out);
+    out
+}
+
 /// Apple Mail's `Name.mbox/mbox` is a mail program's folder whether it is given as `mbox` from inside `Name.mbox`
-/// or by a longer path: its Gmail labels move nothing, so both conversions write the same bytes.
+/// or by a longer path: its Gmail labels move nothing, and it is the folder `Name`. The same file elsewhere is routed
+/// by its labels.
 #[test]
 fn a_relative_mbox_inside_an_apple_mailbox_is_judged_like_its_full_path() {
     let dir = temp_dir("relative-mbox");
@@ -302,19 +329,20 @@ fn a_relative_mbox_inside_an_apple_mailbox_is_judged_like_its_full_path() {
     let run = |current: &std::path::Path, input: &str, output: &std::path::Path| {
         let result = Command::new(env!("CARGO_BIN_EXE_pstsmith")).current_dir(current).args(["convert", input, "-o", output.to_str().unwrap()]).output().unwrap();
         assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+        folders(output)
     };
-    std::fs::create_dir_all(dir.join("a")).unwrap();
-    std::fs::create_dir_all(dir.join("b")).unwrap();
-    run(&mailbox, "mbox", &dir.join("a").join("out.pst"));
-    run(&dir, "Clients.mbox/mbox", &dir.join("b").join("out.pst"));
-    assert!(std::fs::read(dir.join("a").join("out.pst")).unwrap() == std::fs::read(dir.join("b").join("out.pst")).unwrap(), "the relative input was routed by its labels");
-    // The same file outside an Apple Mail mailbox is routed by its labels, so its output differs: the test sees
-    // routing, not only that both runs agree.
+    let key = |path: &[&str]| path.iter().map(|name| name.to_string()).collect::<Vec<_>>();
+    let relative = run(&mailbox, "mbox", &dir.join("relative.pst"));
+    let full = run(&dir, "Clients.mbox/mbox", &dir.join("full.pst"));
+    for tree in [&relative, &full] {
+        assert_eq!(tree.get(&key(&["Clients"])), Some(&1), "{tree:?}");
+        assert!(!tree.contains_key(&key(&["Archive"])), "{tree:?}");
+    }
     let plain = dir.join("plain");
     std::fs::create_dir_all(&plain).unwrap();
     std::fs::copy(mailbox.join("mbox"), plain.join("mbox")).unwrap();
-    std::fs::create_dir_all(dir.join("c")).unwrap();
-    run(&plain, "mbox", &dir.join("c").join("out.pst"));
-    assert!(std::fs::read(dir.join("a").join("out.pst")).unwrap() != std::fs::read(dir.join("c").join("out.pst")).unwrap(), "labels did not route outside a mailbox");
+    let routed = run(&plain, "mbox", &dir.join("routed.pst"));
+    assert_eq!(routed.get(&key(&["Archive"])), Some(&1), "{routed:?}");
+    assert!(routed.get(&key(&["mbox"])).is_none_or(|count| *count == 0), "{routed:?}");
     std::fs::remove_dir_all(&dir).unwrap();
 }

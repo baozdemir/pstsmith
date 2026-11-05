@@ -131,7 +131,8 @@ impl Converter {
     }
 
     /// Adds an input, recognised by what it is:
-    /// - an MBOX file (it starts with "From "): its messages go to a folder named after the file, without `.mbox`;
+    /// - an MBOX file (it starts with "From "): its messages go to a folder named after the file, without `.mbox`
+    ///   (Apple Mail's `Name.mbox/mbox`: `Name`);
     /// - another file: one message (an `.eml`), in a folder named after its directory;
     /// - a Maildir or Maildir++ directory (it has `cur` and `new`): its messages go to "Inbox", its `.A.B` folders to
     ///   `A/B`;
@@ -161,11 +162,7 @@ impl Converter {
             Err(error("input-unsupported", 2, format!("{}: a PST file is not mail input; pstsmith writes PST files from mail", input.display())))
         } else if is_mbox(input).map_err(|e| unreadable(input, e))? {
             // Apple Mail's `Name.mbox/mbox` is the folder `Name`, as when its directory is walked.
-            let apple = input.parent().map(|parent| if parent.as_os_str().is_empty() { Path::new(".") } else { parent }).and_then(real_name);
-            let folder = match apple.as_deref().and_then(|parent| parent.strip_suffix(".mbox")).filter(|stem| name == "mbox" && !stem.is_empty()) {
-                Some(stem) => vec![stem.to_string()],
-                None => vec![mbox_folder_name(&name)],
-            };
+            let folder = vec![apple_mailbox(input).unwrap_or_else(|| mbox_folder_name(&name))];
             let routed = labels_route(input);
             self.add_mbox(input, &name, &folder, routed)
         } else {
@@ -571,7 +568,8 @@ fn zone(word: &str) -> Option<(bool, u8, u8)> {
 const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 /// A zone word between the time and the year, as System V's `%Z` writes it: a zone, tzdata's numeric abbreviation
-/// `+hh`/`-hh` ("+03"), or 1 to 5 letters starting with a capital that are not a month name ("ChST", taken as UTC).
+/// `+hh`/`-hh` ("+03"), or 1 to 5 letters starting with a capital, with two capitals at least, that are not a month
+/// name ("ChST", taken as UTC; a capitalised word such as "Room" is none).
 fn zone_abbreviation(word: &str) -> Option<(bool, u8, u8)> {
     if let Some(found) = zone(word) {
         return Some(found);
@@ -580,7 +578,10 @@ fn zone_abbreviation(word: &str) -> Option<(bool, u8, u8)> {
         let hours: u8 = word[1..].parse().ok()?;
         return (hours <= 23).then_some((word.starts_with('-'), hours, 0));
     }
-    let letters = (1..=5).contains(&word.len()) && word.bytes().all(|byte| byte.is_ascii_alphabetic()) && word.as_bytes()[0].is_ascii_uppercase();
+    let letters = (1..=5).contains(&word.len())
+        && word.bytes().all(|byte| byte.is_ascii_alphabetic())
+        && word.as_bytes()[0].is_ascii_uppercase()
+        && word.bytes().filter(u8::is_ascii_uppercase).count() >= 2;
     (letters && !is_month(word)).then_some((false, 0, 0))
 }
 
@@ -629,7 +630,7 @@ fn date_header_style(line: &[u8]) -> Option<i64> {
 /// on 15 March 2024" is none. Of the zone words, a numeric one gives the offset, else the one next to the year.
 fn from_line_date(line: &[u8]) -> Option<Option<i64>> {
     let mut words = from_line_words(line)?;
-    if !words.iter().any(|word| MONTHS.iter().any(|month| word.eq_ignore_ascii_case(month))) {
+    if !words.iter().any(|word| is_month(word)) {
         return None;
     }
     let mut tz = (false, 0, 0);
@@ -699,9 +700,19 @@ fn is_maildir(dir: &Path) -> bool {
 /// `.sbd` directory, Apple Mail's `Name.mbox/mbox`).
 fn labels_route(path: &Path) -> bool {
     let name = file_name(path);
-    // The parent of a bare "mbox" is the empty path, which stands for the current directory.
-    let parent = path.parent().map(|parent| if parent.as_os_str().is_empty() { Path::new(".") } else { parent }).and_then(real_name).unwrap_or_default();
-    !(path.with_file_name(format!("{name}.msf")).is_file() || parent.ends_with(".sbd") || (name == "mbox" && parent.ends_with(".mbox")))
+    !(path.with_file_name(format!("{name}.msf")).is_file() || parent_name(path).ends_with(".sbd") || apple_mailbox(path).is_some())
+}
+
+/// The name of a path's directory; the parent of a bare "mbox" is the empty path, which stands for the current one.
+fn parent_name(path: &Path) -> String {
+    path.parent().map(|parent| if parent.as_os_str().is_empty() { Path::new(".") } else { parent }).and_then(real_name).unwrap_or_default()
+}
+
+/// For Apple Mail's `Name.mbox/mbox`, the mailbox's name `Name`.
+fn apple_mailbox(path: &Path) -> Option<String> {
+    let parent = parent_name(path);
+    let stem = parent.strip_suffix(".mbox").filter(|stem| !stem.is_empty())?;
+    (file_name(path) == "mbox").then(|| stem.to_string())
 }
 
 /// A PST file starts with the magic "!BDN" (MS-PST 2.2.2.6).
@@ -828,7 +839,7 @@ mod tests {
     ];
 
     /// The asctime cases the oracle's self-test holds too.
-    const ASCTIME_LINES: [(&str, bool); 36] = [
+    const ASCTIME_LINES: [(&str, bool); 41] = [
         ("From a Mon Jan  1 10:00:00 2024", true),
         ("From - Mon Jan  1 10:00:00 2024", true),
         ("From 1@xxx Mon Jan 01 10:01:00 +0000 2024", true),
@@ -868,6 +879,12 @@ mod tests {
         ("From user Mon Jan  1 10:00:00 ChST 2024", true),
         ("From a 10:00:00 2024 JAN", false),
         ("From x 9:00 2024 MAY", false),
+        // A capitalised word is no zone abbreviation; one needs two capitals at least ("ChST").
+        ("From now on you may reach me at 10:00 Ext 4711", false),
+        ("From Mon Jan 6 at 10:00 Room 4711", false),
+        ("From Tue Dec 3, 14:00 Gate 1234", false),
+        ("From the May 5 meeting at 10:00 Room 2024", false),
+        ("From us Dec 24 at 18:00 Merry Xmas 2024", false),
     ];
 
     #[test]

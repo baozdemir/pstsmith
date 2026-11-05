@@ -27,6 +27,7 @@ const MAIL: &[(&str, &str)] = &[
     ("mail-thunderbird", "mail/thunderbird/Local Folders"),
     ("mail-apple", "mail/apple/Export"),
     ("mail-apple-mailbox", "mail/apple/Export/Clients.mbox"),
+    ("mail-apple-file", "mail/apple/Export/Clients.mbox/mbox"),
     ("mail-crlf", "mail/crlf/Windows.mbox"),
     ("mail-maildir", "mail/maildir/Maildir"),
 ];

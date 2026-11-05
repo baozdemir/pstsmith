@@ -109,7 +109,8 @@ jobs:
           mkdir -p out
           for case in "eml:mail/eml" "takeout:mail/takeout/All mail Including Spam and Trash.mbox" \
                       "thunderbird:mail/thunderbird/Local Folders" "apple:mail/apple/Export" \
-                      "applemailbox:mail/apple/Export/Clients.mbox" "crlf:mail/crlf/Windows.mbox" "maildir:mail/maildir/Maildir"; do
+                      "applemailbox:mail/apple/Export/Clients.mbox" "applefile:mail/apple/Export/Clients.mbox/mbox" \
+                      "crlf:mail/crlf/Windows.mbox" "maildir:mail/maildir/Maildir"; do
             target/release/pstsmith convert "tests/fixtures/${case#*:}" -o "out/${case%%:*}.pst"
           done
           sh tests/oracle/structure.sh out/*.pst

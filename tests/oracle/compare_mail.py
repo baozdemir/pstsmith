@@ -37,6 +37,7 @@ CASES = [
     ("mail-thunderbird", "mail/thunderbird/Local Folders"),
     ("mail-apple", "mail/apple/Export"),
     ("mail-apple-mailbox", "mail/apple/Export/Clients.mbox"),
+    ("mail-apple-file", "mail/apple/Export/Clients.mbox/mbox"),
     ("mail-crlf", "mail/crlf/Windows.mbox"),
     ("mail-maildir", "mail/maildir/Maildir"),
 ]
@@ -89,12 +90,13 @@ def zone(word):
 
 def zone_abbreviation(word):
     """A zone word between the time and the year (System V's %Z): a zone, +hh/-hh, or 1 to 5 letters starting with a
-    capital that are not a month name."""
+    capital, with two capitals at least, that are not a month name."""
     if zone(word):
         return True
     if len(word) == 3 and word[0] in "+-" and digits(word[1:], 2, 2):
         return int(word[1:]) <= 23
-    letters = 1 <= len(word) <= 5 and all("a" <= c <= "z" or "A" <= c <= "Z" for c in word) and "A" <= word[0] <= "Z"
+    letters = (1 <= len(word) <= 5 and all("a" <= c <= "z" or "A" <= c <= "Z" for c in word) and "A" <= word[0] <= "Z"
+               and sum("A" <= c <= "Z" for c in word) >= 2)
     return letters and ascii_lower(word) not in MONTHS
 
 
@@ -209,6 +211,11 @@ ASCTIME_LINES = [
     ("From user Mon Jan  1 10:00:00 ChST 2024", True),
     ("From a 10:00:00 2024 JAN", False),
     ("From x 9:00 2024 MAY", False),
+    ("From now on you may reach me at 10:00 Ext 4711", False),
+    ("From Mon Jan 6 at 10:00 Room 4711", False),
+    ("From Tue Dec 3, 14:00 Gate 1234", False),
+    ("From the May 5 meeting at 10:00 Room 2024", False),
+    ("From us Dec 24 at 18:00 Merry Xmas 2024", False),
 ]
 
 
