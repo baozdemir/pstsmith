@@ -169,12 +169,14 @@ fn apple_mail_mbox_directory() {
 fn maildir_flags_and_plus_names() {
     let dir = temp_dir("maildir");
     let root = dir.join("Maildir");
-    write(&root.join("cur/1700000001.1.host:2,S"), eml("seen").as_bytes());
+    // Windows file names cannot hold ':'; Maildir++ writes "!2," there, and both are read.
+    let info = if cfg!(windows) { "!2," } else { ":2," };
+    write(&root.join(format!("cur/1700000001.1.host{info}S")), eml("seen").as_bytes());
     write(&root.join("new/1700000002.2.host"), eml("new").as_bytes());
     std::fs::create_dir_all(root.join("tmp")).unwrap();
-    write(&root.join(".Sent/cur/1700000003.3.host:2,S"), eml("sent").as_bytes());
+    write(&root.join(format!(".Sent/cur/1700000003.3.host{info}S")), eml("sent").as_bytes());
     std::fs::create_dir_all(root.join(".Sent/new")).unwrap();
-    write(&root.join(".Archive.2024/cur/1700000004.4.host:2,DS"), eml("archived").as_bytes());
+    write(&root.join(format!(".Archive.2024/cur/1700000004.4.host{info}DS")), eml("archived").as_bytes());
     std::fs::create_dir_all(root.join(".Archive.2024/new")).unwrap();
     let output = dir.join("out.pst");
     let report = convert(&[&root], &output);

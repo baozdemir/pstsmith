@@ -72,7 +72,7 @@ impl Converter {
             return Err(error("output-exists", 4, "exclusion record path already exists; the caller owns a fresh temporary path"));
         }
         let staging = Staging::create(temp_dir).map_err(io_error)?;
-        let items = BufWriter::new(File::create(staging.dir.join("items.jsonl")).map_err(io_error)?);
+        let items = BufWriter::new(staging.private_file("items.jsonl").map_err(io_error)?);
         Ok(Self {
             output,
             options: options.clone(),
@@ -163,7 +163,7 @@ impl Converter {
         }
         let manifest = self.staging.dir.join("manifest.jsonl");
         let write = || -> io::Result<()> {
-            let mut out = BufWriter::new(File::create(&manifest)?);
+            let mut out = BufWriter::new(self.staging.private_file("manifest.jsonl")?);
             let header = json!({ "schema": "pst-export-manifest/2", "export_id": "pstsmith-mail", "item_count": self.count, "folder_count": self.folders.len() });
             writeln!(out, "{header}")?;
             for folder in &self.folders {
@@ -367,7 +367,11 @@ impl Staging {
         loop {
             let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
             let dir = parent.join(format!("pstsmith-{}-{stamp}-{}", std::process::id(), COUNTER.fetch_add(1, Ordering::Relaxed)));
-            match fs::create_dir(&dir) {
+            // The staged messages are private mail: only the user may read them (0700 on Unix).
+            let mut builder = fs::DirBuilder::new();
+            #[cfg(unix)]
+            std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+            match builder.create(&dir) {
                 Ok(()) => return Ok(Self { dir, next: 0 }),
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
                 Err(e) => return Err(e),
@@ -376,11 +380,23 @@ impl Staging {
     }
 }
 
+impl Staging {
+    /// A new file in the staging directory, readable by the user only (0600 on Unix).
+    fn private_file(&self, name: &str) -> io::Result<File> {
+        let mut options = File::options();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        options.open(self.dir.join(name))
+    }
+}
+
 impl Stage for Staging {
     fn stage(&mut self, data: &[u8]) -> io::Result<Staged> {
         self.next += 1;
-        let path = self.dir.join(format!("a{}", self.next));
-        fs::write(&path, data)?;
+        let name = format!("a{}", self.next);
+        self.private_file(&name)?.write_all(data)?;
+        let path = self.dir.join(name);
         let path = path.into_os_string().into_string().map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "the temporary directory's path is not UTF-8"))?;
         Ok(Staged { path, size: data.len() as u64, sha256: sha256_hex(data) })
     }
@@ -389,5 +405,25 @@ impl Stage for Staging {
 impl Drop for Staging {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.dir);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn staging_is_private_to_the_user() {
+        use std::os::unix::fs::PermissionsExt;
+        let parent = std::env::temp_dir().join(format!("pstsmith-staging-mode-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&parent);
+        fs::create_dir_all(&parent).unwrap();
+        let mut staging = Staging::create(&parent).unwrap();
+        assert_eq!(fs::metadata(&staging.dir).unwrap().permissions().mode() & 0o777, 0o700);
+        let staged = staging.stage(b"private mail").unwrap();
+        assert_eq!(fs::metadata(&staged.path).unwrap().permissions().mode() & 0o077, 0);
+        drop(staging);
+        fs::remove_dir_all(&parent).unwrap();
     }
 }
