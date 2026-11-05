@@ -1,0 +1,33 @@
+{
+  "name": "pstsmith",
+  "version": "0.1.0",
+  "description": "Convert EML, MBOX and Maildir mail to Outlook PST files from Node.js, without Outlook: a typed API over the pstsmith binary.",
+  "keywords": ["pst", "outlook", "email", "eml", "mbox", "maildir", "archive", "ediscovery"],
+  "license": "MIT",
+  "author": "The pstsmith contributors",
+  "homepage": "https://github.com/baozdemir/pstsmith",
+  "repository": { "type": "git", "url": "git+https://github.com/baozdemir/pstsmith.git", "directory": "packages/pstsmith-node" },
+  "bugs": "https://github.com/baozdemir/pstsmith/issues",
+  "type": "module",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.ts"
+  },
+  "optionalDependencies": {
+    "@pstsmith/darwin-arm64": "0.1.0",
+    "@pstsmith/darwin-x64": "0.1.0",
+    "@pstsmith/linux-arm64-gnu": "0.1.0",
+    "@pstsmith/linux-arm64-musl": "0.1.0",
+    "@pstsmith/linux-x64-gnu": "0.1.0",
+    "@pstsmith/linux-x64-musl": "0.1.0",
+    "@pstsmith/win32-x64": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "5.9.3"
+  }
+}
