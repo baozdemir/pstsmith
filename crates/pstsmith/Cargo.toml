@@ -18,9 +18,11 @@ categories = ["email", "parser-implementations", "encoding"]
 name = "pstsmith"
 
 [features]
-default = ["convert"]
+default = ["convert", "mail"]
 # The conversion pipeline (`pstsmith::convert`): JSONL manifests to PST files.
 convert = ["dep:serde", "dep:serde_json", "dep:sha2"]
+# EML, MBOX and Maildir input (`pstsmith::convert::mail`).
+mail = ["convert", "dep:mail-parser"]
 # Maintainer diagnostics, off by default and never in a release build: a counting allocator and per-commit operation
 # counters, reported per commit to the file named by PST_INSTRUMENT_OUT.
 mem-profile = []
@@ -33,6 +35,7 @@ tracing.workspace = true
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 sha2 = { version = "0.10", optional = true }
+mail-parser = { version = "0.11.9", features = ["full_encoding"], optional = true }
 
 [[example]]
 name = "gen-fixture-pst"

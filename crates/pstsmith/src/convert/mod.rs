@@ -4,6 +4,8 @@
 //! `docs/MANIFEST.md`) and writes one PST file or size-limited parts. A failed conversion removes everything it
 //! created, so a caller never sees a partial output.
 
+#[cfg(feature = "mail")]
+pub mod mail;
 mod manifest;
 
 use std::{
