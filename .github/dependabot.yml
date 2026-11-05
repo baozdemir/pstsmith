@@ -4,9 +4,12 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Only patch updates are grouped: a minor or major update of a 0.x crate can break the build or change output
+    # bytes, so each comes as its own pull request with its own CI run.
     groups:
       cargo:
         patterns: ["*"]
+        update-types: ["patch"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -18,3 +21,9 @@ updates:
     directory: /packages/pstsmith-node
     schedule:
       interval: weekly
+    ignore:
+      # The platform packages are this project's own, released with it.
+      - dependency-name: "@pstsmith/*"
+      # A new major of the Node.js types is taken by hand, with the Node.js versions the package supports.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]

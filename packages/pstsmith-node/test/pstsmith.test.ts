@@ -121,7 +121,8 @@ test("stderr_and_stdout_are_capped", { skip: process.platform === "win32" }, asy
 
 test("no_shell_is_used", async () => {
   const d = dir();
-  const odd = join(d, "it's \"quoted\" $(touch pwned) & spaced");
+  // Windows forbids " in a file name; % and ^ are its command shell's own specials.
+  const odd = join(d, process.platform === "win32" ? "it's %PATH% ^ $(touch pwned) & spaced" : "it's \"quoted\" $(touch pwned) & spaced");
   mkdirSync(odd);
   writeFileSync(join(odd, "Inbox.mbox"), MBOX);
   const report = await convertMail({ inputs: [join(odd, "Inbox.mbox")], output: { file: join(odd, "out; rm -rf x.pst") }, binary });

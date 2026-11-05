@@ -12,6 +12,8 @@ permissions: read-all
 
 jobs:
   analysis:
+    # Scorecard's action and the code-scanning upload need a public repository (or GitHub Advanced Security).
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     permissions:
       security-events: write
