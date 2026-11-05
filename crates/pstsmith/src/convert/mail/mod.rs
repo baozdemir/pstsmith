@@ -3,12 +3,14 @@
 //! A message is mapped to the manifest's item form (`pst-export-manifest/2`) following MS-OXCMAIL, the specification
 //! of the conversion of a MIME message to a Message object, and then takes the manifest conversion's path unchanged.
 
+mod converter;
 mod labels;
 pub(crate) mod mime;
 #[cfg(test)]
 mod mime_tests;
 mod report;
 
+pub use converter::Converter;
 use sha2::{Digest, Sha256};
 use std::io;
 

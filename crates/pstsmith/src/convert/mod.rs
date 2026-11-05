@@ -51,12 +51,24 @@ impl Default for ManifestOptions {
 #[derive(Clone, Debug)]
 pub struct Report {
     line: serde_json::Value,
+    warnings: Vec<String>,
 }
 
 impl Report {
-    /// The report as the one JSON line the command line prints on stdout.
+    /// The report as the one JSON line the command line prints on stdout. With warnings, its `warnings` field counts
+    /// them; [`Report::warnings`] has their text.
     pub fn result_line(&self) -> String {
-        self.line.to_string()
+        let mut line = self.line.clone();
+        if !self.warnings.is_empty() {
+            line["warnings"] = serde_json::json!(self.warnings.len());
+        }
+        line.to_string()
+    }
+
+    /// What was kept in another form than a mail client shows it, or what a later import may treat differently (mail
+    /// input only; a manifest conversion has none).
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
     }
 
     /// Items written.
@@ -134,5 +146,5 @@ pub fn convert_manifest(manifest: &Path, output: &Output, options: &ManifestOpti
         batch_items: options.batch_items,
         batch_bytes: options.batch_bytes,
     };
-    Ok(Report { line: manifest::run(&options)? })
+    Ok(Report { line: manifest::run(&options)?, warnings: Vec::new() })
 }
