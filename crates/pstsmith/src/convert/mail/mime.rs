@@ -266,31 +266,32 @@ enum Leaf<'p> {
     Message(&'p MessagePart<'p>),
 }
 
-fn leaves<'p>(message: &'p Message<'p>, id: usize, out: &mut Vec<Leaf<'p>>, seen: &mut [bool]) {
-    let Some(part) = message.parts.get(id) else { return };
-    // A part is visited once, whatever its parents say.
-    if std::mem::replace(&mut seen[id], true) {
-        return;
-    }
-    match &part.body {
-        PartType::Multipart(children) => {
-            for child in children {
-                leaves(message, *child as usize, out, seen);
-            }
+fn leaves<'p>(message: &'p Message<'p>, root: usize, out: &mut Vec<Leaf<'p>>, seen: &mut [bool]) {
+    // An explicit stack, not recursion: a hostile message may nest multiparts as deep as its size allows. Children are
+    // pushed in reverse, so leaves come out in document order.
+    let mut stack = vec![root];
+    while let Some(id) = stack.pop() {
+        let Some(part) = message.parts.get(id) else { continue };
+        // A part is visited once, whatever its parents say.
+        if std::mem::replace(&mut seen[id], true) {
+            continue;
         }
-        PartType::Message(_) => out.push(Leaf::Message(part)),
-        _ => {
-            let (kind, subtype) = content_type(part);
-            if kind == "message" && subtype == "rfc822" {
-                out.push(Leaf::Message(part));
-            } else if is_attachment(part) {
-                out.push(Leaf::File(part));
-            } else if kind == "text" && subtype == "plain" && matches!(part.body, PartType::Text(_)) {
-                out.push(Leaf::Text(part));
-            } else if kind == "text" && subtype == "html" && matches!(part.body, PartType::Html(_) | PartType::Text(_)) {
-                out.push(Leaf::Html(part));
-            } else {
-                out.push(Leaf::File(part));
+        match &part.body {
+            PartType::Multipart(children) => stack.extend(children.iter().rev().map(|child| *child as usize)),
+            PartType::Message(_) => out.push(Leaf::Message(part)),
+            _ => {
+                let (kind, subtype) = content_type(part);
+                if kind == "message" && subtype == "rfc822" {
+                    out.push(Leaf::Message(part));
+                } else if is_attachment(part) {
+                    out.push(Leaf::File(part));
+                } else if kind == "text" && subtype == "plain" && matches!(part.body, PartType::Text(_)) {
+                    out.push(Leaf::Text(part));
+                } else if kind == "text" && subtype == "html" && matches!(part.body, PartType::Html(_) | PartType::Text(_)) {
+                    out.push(Leaf::Html(part));
+                } else {
+                    out.push(Leaf::File(part));
+                }
             }
         }
     }

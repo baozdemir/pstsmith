@@ -424,3 +424,17 @@ fn every_key_of_the_nested_form_is_present() {
     assert_eq!(keys.len(), 21);
 }
 
+
+#[test]
+fn deeply_nested_multiparts_do_not_overflow_the_stack() {
+    let depth = 200_000;
+    let mut raw = String::from("From: a@example.invalid\r\nSubject: deep\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=b0\r\n\r\n");
+    for level in 1..depth {
+        raw.push_str(&format!("--b{}\r\nContent-Type: multipart/mixed; boundary=b{level}\r\n\r\n", level - 1));
+    }
+    raw.push_str(&format!("--b{}\r\nContent-Type: text/plain\r\n\r\ninnermost\r\n", depth - 1));
+    // Run on a small stack, as a worker thread may have.
+    let handle = std::thread::Builder::new().stack_size(256 * 1024).spawn(move || map(&raw).0["body"].clone()).unwrap();
+    let body = handle.join().expect("no stack overflow");
+    assert!(body.as_str().unwrap().contains("innermost"));
+}

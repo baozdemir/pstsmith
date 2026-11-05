@@ -98,6 +98,10 @@ pub(crate) fn status_codes(status: &str) -> Option<(i64, i64, i64)> {
     let code = status.trim().split(' ').next().unwrap_or("");
     let mut numbers = code.split('.').take(3).map(|part| part.parse::<i64>().ok());
     let (kind, subject, detail) = (numbers.next()??, numbers.next()??, numbers.next()??);
+    // RFC 3464 2.3.4: the class is one digit. A longer one is no status, so the code always fits PtypInteger32.
+    if !(0..=9).contains(&kind) {
+        return None;
+    }
     let subject = if (0..=9).contains(&subject) { subject as u8 } else { 0 };
     let detail = if (0..=9).contains(&detail) { detail as u8 } else { 0 };
     let (mut diagnostic, mut reason) = (-1, 0);
@@ -268,6 +272,11 @@ mod tests {
         assert_eq!(status_codes("5.0.0"), Some((500, -1, 0)));
         assert_eq!(status_codes("5.1.12"), Some((510, 0, 0)));
         assert_eq!(status_codes("x.1.1"), None);
+        // RFC 3464 2.3.4: the class is one digit; anything else is no status (the value is an int32).
+        assert_eq!(status_codes("99999999999999999999.1.1"), None);
+        assert_eq!(status_codes("9223372036854775807.1.1"), None);
+        assert_eq!(status_codes("-5.1.1"), None);
+        assert_eq!(status_codes("12.1.1"), None);
     }
 
     const DSN: &str = "Reporting-MTA: dns; mx.example.invalid\r\n\r\nFinal-Recipient: rfc822; a@example.invalid\r\n\
