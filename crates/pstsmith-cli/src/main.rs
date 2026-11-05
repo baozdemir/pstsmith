@@ -33,16 +33,17 @@ const HELP: &str = "\
 pstsmith: read, create and append PST files without Outlook
 
 Usage:
-  pstsmith convert INPUT... (-o FILE.pst | --output-dir DIR [--max-file-size SIZE]) [options]
+  pstsmith convert INPUT... (-o FILE.pst | --output-dir DIR) [--max-file-size SIZE] [options]
   pstsmith --manifest ITEMS.jsonl (--output FILE.pst | --output-dir DIR) [manifest options]
 
 convert reads .eml files, MBOX files (Gmail Takeout, Thunderbird, Apple Mail), Maildir directories and
 directories of them, and writes one PST file or size-limited parts.
 
 Options:
-  -o, --output FILE        write one PST file (it must not exist)
+  -o, --output FILE        write one PST file of at most --max-file-size (it must not exist)
   --output-dir DIR         write parts export-0001.pst, export-0002.pst, ... into a new directory
-  --max-file-size SIZE     largest part: 1GB, 2GB, 5GB or 10GB (default 10GB)
+  --max-file-size SIZE     largest file or part: 1GB, 2GB, 5GB or 10GB (default 10GB, the largest PST
+                           Microsoft's own exports write); a larger mailbox needs --output-dir
   --excluded PATH          record items that cannot be written faithfully here instead of failing
   --temp-dir DIR           where convert stages the decoded messages (default: the system temporary directory)
   --json                   print the pst-export-result/1 line on stdout (convert)
@@ -228,11 +229,41 @@ fn convert_main(args: Vec<String>) -> ExitCode {
             }
             ExitCode::SUCCESS
         }
-        Err(error) => fail(error),
+        Err(error) => {
+            // After the error line: callers read stderr's first line as the error.
+            let hint = convert_hint(&error, &options.output);
+            let code = fail(error);
+            if let Some(hint) = hint {
+                eprintln!("{hint}");
+            }
+            code
+        }
     }
+}
+
+/// What to do next, for a convert error a person can act on.
+fn convert_hint(error: &ConvertError, output: &Output) -> Option<&'static str> {
+    (error.code == "output-too-large" && matches!(output, Output::File(_))).then_some(
+        "pstsmith: -o writes one file of at most --max-file-size (10GB by default); --output-dir DIR writes as many parts as the mail needs",
+    )
 }
 
 fn fail(error: ConvertError) -> ExitCode {
     eprintln!("{}", error.error_line());
     ExitCode::from(error.exit_code)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_single_file_that_is_too_large_points_to_parts() {
+        let too_large = ConvertError { code: "output-too-large", exit_code: 2, item_key: None, detail: String::new() };
+        let hint = convert_hint(&too_large, &Output::File("archive.pst".into())).expect("a hint for one file");
+        assert!(hint.contains("--output-dir"), "{hint}");
+        assert_eq!(convert_hint(&too_large, &Output::Directory("parts".into())), None);
+        let other = ConvertError { code: "input-unreadable", ..too_large };
+        assert_eq!(convert_hint(&other, &Output::File("archive.pst".into())), None);
+    }
 }
