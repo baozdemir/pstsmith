@@ -49,9 +49,9 @@ brew install baozdemir/tap/pstsmith
 npm install pstsmith                # TypeScript/JavaScript API with prebuilt binaries
 ```
 
-Prebuilt binaries for Linux (x86-64, arm64), macOS and Windows are on the
-[releases page](https://github.com/baozdemir/pstsmith/releases), with shell and PowerShell installers. Each carries a
-build provenance attestation: `gh attestation verify <file> --repo baozdemir/pstsmith`.
+Prebuilt binaries for Linux (x86-64 and arm64, glibc and static musl), macOS (arm64 and x86-64) and Windows (x86-64)
+are on the [releases page](https://github.com/baozdemir/pstsmith/releases). Each archive carries a build provenance
+attestation: `gh attestation verify <file> --repo baozdemir/pstsmith`.
 
 ## Quick start
 

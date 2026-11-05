@@ -1,19 +1,22 @@
 # release-plz: a release pull request per change set, then the crates.io publish, the tag and the GitHub release.
 [workspace]
 repo_url = "https://github.com/baozdemir/pstsmith"
-# Library and command line are released together, with one version.
 semver_check = true
-git_release_enable = true
 
+# The library and the command line share one version and one tag, vX.Y.Z, whose GitHub release starts release.yml.
 [[package]]
 name = "pstsmith"
 changelog_path = "CHANGELOG.md"
 version_group = "pstsmith"
+git_tag_name = "v{{ version }}"
+git_release_enable = true
 
 [[package]]
 name = "pstsmith-cli"
 changelog_path = "crates/pstsmith-cli/CHANGELOG.md"
 version_group = "pstsmith"
+git_tag_enable = false
+git_release_enable = false
 
 [[package]]
 name = "pstsmith-check"

@@ -9,8 +9,11 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+/// The fixtures directory, without `canonicalize`: on Windows that gives a `\\?\` path, which stops being one once
+/// its separators are written as `/` in a manifest.
 fn fixtures() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures").canonicalize().unwrap()
+    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    crate_dir.parent().and_then(Path::parent).expect("crates/pstsmith is two levels below the repository").join("tests/fixtures")
 }
 
 fn sha256(path: &Path) -> String {

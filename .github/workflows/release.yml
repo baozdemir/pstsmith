@@ -1,0 +1,155 @@
+# The binaries of a release: built for every target when release-plz publishes a GitHub release (tag vX.Y.Z), each
+# archive attested (build provenance) and attached to the release; then the npm packages and, when the maintainer has
+# set the HOMEBREW_TAP_TOKEN secret, the Homebrew formula in baozdemir/homebrew-tap.
+name: Release binaries
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-22.04, musl: true }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-22.04-arm, musl: true }
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-apple-darwin, os: macos-latest }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - if: ${{ matrix.musl }}
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo build --release --locked -p pstsmith-cli --target ${{ matrix.target }}
+      - name: Archive
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          name="pstsmith-$TARGET"
+          mkdir -p "dist/$name"
+          exe=pstsmith; [ "${TARGET#*windows}" != "$TARGET" ] && exe=pstsmith.exe
+          cp "target/$TARGET/release/$exe" LICENSE README.md "dist/$name/"
+          cd dist
+          if [ "$exe" = pstsmith.exe ]; then 7z a "$name.zip" "$name" > /dev/null; else tar czf "$name.tar.gz" "$name"; fi
+          rm -r "$name"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+
+  publish:
+    name: Attest and attach
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - run: cd dist && sha256sum * > SHA256SUMS
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/pstsmith-*
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+
+  npm:
+    name: npm packages
+    needs: build
+    if: ${{ vars.RELEASE_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: archives
+          merge-multiple: true
+      - name: Platform packages
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${TAG#v}"
+          mkdir binaries
+          for archive in archives/*; do
+            target=$(basename "$archive"); target="${target#pstsmith-}"; target="${target%.tar.gz}"; target="${target%.zip}"
+            mkdir -p "binaries/$target"
+            case "$archive" in
+              *.zip) unzip -j -o "$archive" "*/pstsmith.exe" -d "binaries/$target" ;;
+              *) tar xzf "$archive" -C "binaries/$target" --strip-components=1 "pstsmith-$target/pstsmith" ;;
+            esac
+          done
+          node packages/pstsmith-node/platform-packages.mjs "$version" binaries npm-platforms
+          for dir in npm-platforms/*; do (cd "$dir" && npm publish --provenance --access public); done
+      - name: The pstsmith package
+        working-directory: packages/pstsmith-node
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${TAG#v}"
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json"));p.version=process.argv[1];for(const k of Object.keys(p.optionalDependencies))p.optionalDependencies[k]=process.argv[1];fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")' "$version"
+          npm install --no-audit --no-fund --ignore-scripts
+          npm run build
+          npm publish --provenance --access public
+
+  homebrew:
+    name: Homebrew formula
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Update baozdemir/homebrew-tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then echo "HOMEBREW_TAP_TOKEN is not set; skipping the formula"; exit 0; fi
+          sh .github/homebrew-formula.sh "$TAG" dist > pstsmith.rb
+          git clone "https://x-access-token:$TAP_TOKEN@github.com/baozdemir/homebrew-tap.git" tap
+          mkdir -p tap/Formula && cp pstsmith.rb tap/Formula/pstsmith.rb
+          cd tap
+          git config user.name "pstsmith release"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/pstsmith.rb
+          git commit -m "pstsmith $TAG" && git push

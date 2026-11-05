@@ -28,3 +28,12 @@ op-counters = ["pstsmith/op-counters"]
 
 [dev-dependencies]
 serde_json = "1"
+
+# cargo-binstall: the release archives are pstsmith-<target>.tar.gz (zip on Windows), holding pstsmith-<target>/pstsmith.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/pstsmith-{ target }{ archive-suffix }"
+bin-dir = "pstsmith-{ target }/{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
