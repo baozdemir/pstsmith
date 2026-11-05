@@ -17,7 +17,8 @@ with attested binaries, the npm packages `pstsmith` and `@pstsmith/<platform>`, 
    `release`). Keep the token until one release has published through them, then delete it and the secret. An
    expired trusted publisher is deleted and created again.
 3. GitHub: create the environment `release` (Settings > Environments); set the repository variable `RELEASE_ENABLED`
-   to `true`. Required reviewers on `release` would hold every push to `main`, since release-plz's publish job runs
+   to `true`; allow GitHub Actions to create pull requests (Settings > Actions > General), which release-plz needs
+   for its release pull request. Required reviewers on `release` would hold every push to `main`, since release-plz's publish job runs
    on each push (it publishes only when a version is new). Immutable releases can be on: every release is a draft until its
    archives are attached.
 4. Homebrew: create the repository `baozdemir/homebrew-tap` and a fine-grained token with contents write on it only;
