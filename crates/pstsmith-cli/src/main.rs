@@ -3,7 +3,9 @@
 //! `pstsmith convert INPUT...` converts EML files, MBOX files, Maildir directories and Thunderbird or Apple Mail folders
 //! (see [`pstsmith::convert::mail::Converter::add_path`]); a human-readable summary goes to stderr, and with `--json`
 //! the `pst-export-result/1` line to stdout. Its warnings name the item concerned by its input path, for the person
-//! running the command; the manifest mode below writes no file names.
+//! running the command; the manifest mode below writes no file names. Stopped by SIGTERM, SIGINT (Ctrl-C) or SIGHUP,
+//! convert removes its staging directory and partial output and exits with 128 plus the signal's number; the manifest
+//! mode keeps the default signal behaviour.
 //!
 //! `pstsmith --manifest FILE` converts a JSONL manifest of mail items into one PST file or size-limited parts:
 //!
@@ -27,7 +29,9 @@ static COUNTING: pstsmith::measurement::heap::Counting = pstsmith::measurement::
 
 use pstsmith::convert::mail::Converter;
 use pstsmith::convert::{convert_manifest, ConvertError, ManifestOptions, Output, Report, FILE_SIZE_CHOICES};
-use std::{env, path::PathBuf, process::ExitCode};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::{env, fs, io, path::PathBuf, process::ExitCode, thread, time::Duration};
 
 const HELP: &str = "\
 pstsmith: read, create and append PST files without Outlook
@@ -201,17 +205,25 @@ fn convert_main(args: Vec<String>) -> ExitCode {
         Ok(options) => options,
         Err(error) => return fail(error),
     };
-    let run = || -> Result<Report, ConvertError> {
-        let mut converter = match &options.temp_dir {
-            Some(dir) => Converter::create_in(options.output.clone(), &options.manifest_options, dir)?,
-            None => Converter::create(options.output.clone(), &options.manifest_options)?,
-        };
+    let converter = match &options.temp_dir {
+        Some(dir) => Converter::create_in(options.output.clone(), &options.manifest_options, dir),
+        None => Converter::create(options.output.clone(), &options.manifest_options),
+    };
+    let mut converter = match converter {
+        Ok(converter) => converter,
+        Err(error) => return fail(error),
+    };
+    let over = stop_on_signal(&converter, &options);
+    let run = move || -> Result<Report, ConvertError> {
         for input in &options.inputs {
             converter.add_path(input)?;
         }
         converter.finish()
     };
-    match run() {
+    let result = run();
+    // From here a signal removes nothing: the conversion is over, and its own cleanup has run if it failed.
+    *over.lock().unwrap_or_else(PoisonError::into_inner) = true;
+    match result {
         Ok(report) => {
             let outputs = report.outputs();
             let place = match (&options.output, outputs.len()) {
@@ -237,6 +249,77 @@ fn convert_main(args: Vec<String>) -> ExitCode {
                 eprintln!("{hint}");
             }
             code
+        }
+    }
+}
+
+/// Stops a conversion on SIGTERM, SIGINT (Ctrl-C) and, on Unix, SIGHUP: removes the staging directory, which holds
+/// decoded mail, and what the conversion wrote (its output and exclusion record did not exist before it started:
+/// `Converter::create` refuses existing paths), prints the error line and exits with 128 plus the signal's number. A
+/// second signal ends the process at once. Returns the flag the conversion sets, under its lock, when it is over;
+/// a signal after that removes nothing. A kill that cannot be caught (SIGKILL, an out-of-memory kill) still leaves
+/// the files behind.
+fn stop_on_signal(converter: &Converter, options: &ConvertOptions) -> Arc<Mutex<bool>> {
+    let over = Arc::new(Mutex::new(false));
+    let stopping = Arc::new(AtomicBool::new(false));
+    let signal = Arc::new(AtomicUsize::new(0));
+    #[cfg(unix)]
+    let signals = [signal_hook::consts::TERM_SIGNALS, &[signal_hook::consts::SIGHUP]].concat();
+    #[cfg(not(unix))]
+    let signals = signal_hook::consts::TERM_SIGNALS.to_vec();
+    for number in signals {
+        // In this order: the first signal finds `stopping` false and sets it, a second one exits.
+        let _ = signal_hook::flag::register_conditional_shutdown(number, 128 + number, Arc::clone(&stopping));
+        let _ = signal_hook::flag::register(number, Arc::clone(&stopping));
+        let _ = signal_hook::flag::register_usize(number, Arc::clone(&signal), number as usize);
+    }
+    let output = match &options.output {
+        Output::File(path) | Output::Directory(path) => path.clone(),
+    };
+    let created: Vec<PathBuf> = [Some(converter.staging_dir().to_path_buf()), Some(output), options.manifest_options.excluded.clone()]
+        .into_iter()
+        .flatten()
+        .collect();
+    let watched = Arc::clone(&over);
+    thread::spawn(move || loop {
+        let number = signal.load(Ordering::SeqCst);
+        let over = watched.lock().unwrap_or_else(PoisonError::into_inner);
+        if *over {
+            return;
+        }
+        if number != 0 {
+            // `over` stays locked until the exit, so the conversion cannot finish in between.
+            for path in &created {
+                remove_created(path);
+            }
+            let error = ConvertError {
+                code: "interrupted",
+                exit_code: (128 + number).min(255) as u8,
+                item_key: None,
+                detail: format!("stopped by signal {number}; the staging directory and the partial output were removed"),
+            };
+            eprintln!("{}", error.error_line());
+            std::process::exit(128 + number as i32);
+        }
+        drop(over);
+        thread::sleep(Duration::from_millis(20));
+    });
+    over
+}
+
+/// Removes a file or directory the stopped conversion created. The conversion keeps running until the exit and may
+/// add a file meanwhile, so the removal is tried again for up to a second.
+fn remove_created(path: &PathBuf) {
+    for _ in 0..50 {
+        let removed = match fs::symlink_metadata(path) {
+            Ok(metadata) if metadata.is_dir() => fs::remove_dir_all(path),
+            Ok(_) => fs::remove_file(path),
+            Err(error) => Err(error),
+        };
+        match removed {
+            Ok(()) => return,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return,
+            Err(_) => thread::sleep(Duration::from_millis(20)),
         }
     }
 }

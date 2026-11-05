@@ -22,7 +22,8 @@ Reporters are credited in the advisory unless they ask not to be.
   walked and dropped without recursion, and memory follows the largest single message (plus a short record per
   message), not the size of the input.
 - The staging directory of a mail conversion is private to the user (0700 on Unix, files 0600) and removed when the
-  conversion ends, whether it succeeds or fails. A process that is killed (a signal, an out-of-memory kill) cannot
-  remove it: its `pstsmith-*` directory in the temporary directory, holding decoded mail, and any partial output are
-  left behind; remove them.
+  conversion ends, whether it succeeds or fails; `pstsmith convert` also removes it, and its partial output, when it
+  is stopped by Ctrl-C, SIGTERM or SIGHUP. A kill that cannot be caught (SIGKILL, an out-of-memory kill) leaves its
+  `pstsmith-*` directory in the temporary directory, holding decoded mail, and any partial output behind; remove
+  them.
 - Every release binary carries a build provenance attestation (`gh attestation verify`).

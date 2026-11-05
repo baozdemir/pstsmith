@@ -89,6 +89,13 @@ impl Converter {
         })
     }
 
+    /// The private directory this converter stages decoded messages in. [`finish`](Converter::finish) removes it, and
+    /// so does dropping the converter; a process stopped by a signal runs neither, so a caller that handles signals
+    /// removes it itself (the command line does).
+    pub fn staging_dir(&self) -> &Path {
+        &self.staging.dir
+    }
+
     /// Adds an input, recognised by what it is:
     /// - an MBOX file (it starts with "From "): its messages go to a folder named after the file, without `.mbox`;
     /// - another file: one message (an `.eml`), in a folder named after its directory;

@@ -97,3 +97,44 @@ fn cli_help_and_version() {
     assert!(version.status.success());
     assert_eq!(String::from_utf8_lossy(&version.stdout).trim(), format!("pstsmith {}", env!("CARGO_PKG_VERSION")));
 }
+
+/// A conversion stopped by SIGTERM, SIGINT (Ctrl-C) or SIGHUP removes what it wrote: the staging directory, which holds
+/// decoded mail, and the partial output, which would look like a complete PST with fewer messages.
+#[cfg(unix)]
+#[test]
+fn a_stopped_convert_removes_its_staging_and_output() {
+    use std::io::Write;
+    let dir = temp_dir("convert-stopped");
+    let mbox = dir.join("Big.mbox");
+    let mut file = std::io::BufWriter::new(std::fs::File::create(&mbox).unwrap());
+    for index in 0..60_000 {
+        write!(file, "From a Mon Jan  1 10:00:00 2024\nFrom: a@example.invalid\nSubject: message {index}\n\nbody {index}\n\n").unwrap();
+    }
+    drop(file);
+    let staging = dir.join("staging");
+    std::fs::create_dir(&staging).unwrap();
+    let output = dir.join("out.pst");
+    for signal in ["TERM", "INT", "HUP"] {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_pstsmith"))
+            .args(["convert", mbox.to_str().unwrap(), "-o", output.to_str().unwrap(), "--temp-dir", staging.to_str().unwrap()])
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        // Wait until the conversion has staged some mail, then stop it.
+        let started = std::time::Instant::now();
+        while std::fs::read_dir(&staging).unwrap().next().is_none() {
+            assert!(started.elapsed() < std::time::Duration::from_secs(30), "no staging directory appeared");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(Command::new("kill").args([&format!("-{signal}"), &child.id().to_string()]).status().unwrap().success());
+        let result = child.wait_with_output().unwrap();
+        assert!(!result.status.success(), "SIG{signal}: the conversion finished before the signal; make the input larger");
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(stderr.lines().next().is_some_and(|line| line.contains("\"error\":\"interrupted\"")), "SIG{signal}: {stderr}");
+        let left: Vec<_> = std::fs::read_dir(&staging).unwrap().map(|entry| entry.unwrap().path()).collect();
+        assert!(left.is_empty(), "SIG{signal}: staging left behind: {left:?}");
+        assert!(!output.exists(), "SIG{signal}: a partial output was left behind");
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}

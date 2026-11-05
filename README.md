@@ -70,8 +70,8 @@ A directory is walked in name order: `.eml` files become a folder per directory,
 modified UTF-7 are decoded). Gmail labels become folders and categories, each message written once. `-o` writes one
 file of at most 10 GB (`--max-file-size`), the largest PST Microsoft's own exports write; a larger mailbox needs
 `--output-dir`. The decoded messages are staged in a private temporary directory (`--temp-dir`), which needs about as
-much free space as the input and is removed when the conversion ends; a conversion that is killed leaves it, and its
-partial output, behind.
+much free space as the input and is removed when the conversion ends. Stopped by Ctrl-C, SIGTERM or SIGHUP, `convert`
+removes it and its partial output; only a kill that cannot be caught (SIGKILL, an out-of-memory kill) leaves them.
 
 **Rust**
 

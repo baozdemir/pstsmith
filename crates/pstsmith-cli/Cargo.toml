@@ -18,6 +18,7 @@ path = "src/main.rs"
 
 [dependencies]
 pstsmith = { path = "../pstsmith", version = "0.1.0" }
+signal-hook = { version = "0.3.18", default-features = false }
 
 [features]
 # Tests only: `--max-file-bytes N` sets any file size limit; release builds take the four choices of `--max-file-size`.
