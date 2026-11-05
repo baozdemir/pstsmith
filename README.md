@@ -19,9 +19,9 @@ pstsmith turns mail into Outlook data files (`.pst`): EML files, MBOX files (Goo
 Maildir directories, or a JSONL manifest of messages. It is a Rust library, a command-line tool and an npm package,
 and it needs nothing else installed: no Outlook, no MAPI, no Windows.
 
-> pstsmith is a hard fork of [`dongs0104/outlook-pst-rs`](https://github.com/dongs0104/outlook-pst-rs), itself a fork of
-> [`microsoft/outlook-pst-rs`](https://github.com/microsoft/outlook-pst-rs). It is not affiliated with or endorsed by
-> Microsoft. See [docs/UPSTREAM.md](docs/UPSTREAM.md).
+It started from Microsoft's open-source PST reader, [outlook-pst-rs](https://github.com/microsoft/outlook-pst-rs), and
+the write support of [a fork of it](https://github.com/dongs0104/outlook-pst-rs); [docs/UPSTREAM.md](docs/UPSTREAM.md)
+lists what pstsmith changed. pstsmith is not affiliated with or endorsed by Microsoft.
 
 ```console
 $ pstsmith convert "Takeout/Mail/All mail Including Spam and Trash.mbox" -o gmail.pst

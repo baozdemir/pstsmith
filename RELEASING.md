@@ -47,6 +47,8 @@ formula.
 
 ## Before tagging
 
+- The repository is public: on GitHub Free, Pro and Team, build attestations work only in public repositories, and
+  npm publishes provenance only from a public source repository.
 - CI is green on `main`, including the fixture byte identity on Linux, macOS and Windows and the libpff oracle.
 - A change that changes output bytes says so in the changelog, with how its output was checked
   ([docs/VERIFICATION.md](docs/VERIFICATION.md)).

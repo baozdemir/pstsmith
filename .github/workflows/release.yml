@@ -68,6 +68,34 @@ jobs:
       - if: ${{ matrix.musl }}
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - run: cargo build --release --locked -p pstsmith-cli --target ${{ matrix.target }}
+      # The release binary of every target must give the mail fixtures' bytes, as CI's tests do on three systems.
+      - name: The binary gives the fixtures' bytes
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          exe=pstsmith; [ "${TARGET#*windows}" != "$TARGET" ] && exe=pstsmith.exe
+          bin="target/$TARGET/release/$exe"
+          "$bin" --version
+          if command -v sha256sum > /dev/null; then hash() { sha256sum "$1" | cut -d' ' -f1; }; else hash() { shasum -a 256 "$1" | cut -d' ' -f1; }; fi
+          mkdir smoke
+          failed=0
+          while IFS=: read -r name input; do
+            "$bin" convert "tests/fixtures/$input" -o "smoke/$name.pst" > /dev/null
+            want=$(awk -v f="$name.pst" '$2 == f { print $1 }' tests/fixtures/expected.sha256)
+            got=$(hash "smoke/$name.pst")
+            if [ "$want" = "$got" ]; then echo "same: $name"; else echo "DIFFERENT: $name ($got, expected $want)"; failed=1; fi
+          done <<'CASES'
+          mail-eml:mail/eml
+          mail-takeout:mail/takeout/All mail Including Spam and Trash.mbox
+          mail-thunderbird:mail/thunderbird/Local Folders
+          mail-apple:mail/apple/Export
+          mail-apple-mailbox:mail/apple/Export/Clients.mbox
+          mail-apple-file:mail/apple/Export/Clients.mbox/mbox
+          mail-crlf:mail/crlf/Windows.mbox
+          mail-maildir:mail/maildir/Maildir
+          CASES
+          exit $failed
       - name: Archive
         shell: bash
         env:
