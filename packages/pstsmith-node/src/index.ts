@@ -4,7 +4,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { resolveBinary } from "./binary.ts";
 import { parseError, parseResult, ProtocolError, type Report } from "./protocol.ts";
 
@@ -86,8 +86,9 @@ export async function convertMail(options: MailOptions): Promise<Report> {
   // A private staging directory of this call, removed afterwards, also when the process had to be killed.
   const staging = mkdtempSync(join(options.tempDir ?? tmpdir(), "pstsmith-node-"));
   try {
-    const output = "file" in options.output ? ["-o", options.output.file] : outputArgs(options.output);
-    return await run(["convert", ...options.inputs, ...output, ...commonArgs(options), "--temp-dir", staging, "--json"], options);
+    // The inputs come last, after "--" and as absolute paths, so none can be read as an option.
+    const inputs = options.inputs.map((input) => resolve(input));
+    return await run(["convert", ...outputArgs(options.output), ...commonArgs(options), "--temp-dir", staging, "--json", "--", ...inputs], options);
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }
@@ -98,8 +99,13 @@ function run(args: string[], options: CommonOptions): Promise<Report> {
   if (!binary || !existsSync(binary)) {
     return Promise.reject(new PstsmithError("binary-not-found", binary ? `${binary} does not exist` : "no pstsmith binary for this platform; set PSTSMITH_BINARY"));
   }
-  if (options.signal?.aborted) return Promise.reject(new PstsmithError("aborted", "aborted before it started"));
   const outputPath = "file" in options.output ? options.output.file : options.output.dir;
+  // pstsmith refuses an existing output, and so does this wrapper before it starts anything: what it may remove after
+  // a kill is then only what the killed process created.
+  for (const path of [outputPath, options.excluded]) {
+    if (path && existsSync(path)) return Promise.reject(new PstsmithError("output-exists", `${path} already exists`, 4));
+  }
+  if (options.signal?.aborted) return Promise.reject(new PstsmithError("aborted", "aborted before it started"));
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, { shell: false, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     const stdout: Buffer[] = [];

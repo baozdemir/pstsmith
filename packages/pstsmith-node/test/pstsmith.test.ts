@@ -71,7 +71,7 @@ function slowBinary(d: string): string {
     return path;
   }
   const path = join(d, "slow.sh");
-  writeFileSync(path, "#!/bin/sh\nwhile [ \"$1\" != \"-o\" ] && [ $# -gt 0 ]; do shift; done\necho partial > \"$2\"\nsleep 30\n");
+  writeFileSync(path, "#!/bin/sh\nwhile [ \"$1\" != \"--output\" ] && [ $# -gt 0 ]; do shift; done\necho partial > \"$2\"\nsleep 30\n");
   chmodSync(path, 0o755);
   return path;
 }
@@ -80,7 +80,10 @@ test("abort_kills_the_process_and_leaves_no_output", { skip: process.platform ==
   const d = dir();
   const controller = new AbortController();
   const run = convertMail({ inputs: [join(d, "in.mbox")], output: { file: join(d, "out.pst") }, binary: slowBinary(d), signal: controller.signal });
-  setTimeout(() => controller.abort(), 300);
+  setTimeout(() => {
+    assert.ok(existsSync(join(d, "out.pst")), "the stand-in wrote a partial output");
+    controller.abort();
+  }, 300);
   await assert.rejects(run, (error: unknown) => error instanceof PstsmithError && error.kind === "aborted");
   assert.ok(!existsSync(join(d, "out.pst")), "the partial output is removed");
   rmSync(d, { recursive: true });
@@ -131,5 +134,34 @@ test("binary_override_is_used", async () => {
   const d = dir();
   await assert.rejects(convertMail({ inputs: [d], output: { file: join(d, "o.pst") }, binary: join(d, "missing-binary") }),
     (error: unknown) => error instanceof PstsmithError && error.kind === "binary-not-found");
+  rmSync(d, { recursive: true });
+});
+
+test("an_existing_output_is_never_removed", { skip: process.platform === "win32" }, async () => {
+  const d = dir();
+  mkdirSync(join(d, "parts"));
+  writeFileSync(join(d, "parts", "keep.txt"), "mine");
+  const controller = new AbortController();
+  controller.abort();
+  const slow = slowBinary(d);
+  for (const signal of [controller.signal, undefined]) {
+    await assert.rejects(convertMail({ inputs: [join(d, "in.mbox")], output: { dir: join(d, "parts") }, binary: slow, signal, timeoutMs: 100 }),
+      (error: unknown) => error instanceof PstsmithError && error.kind === "output-exists");
+    assert.ok(existsSync(join(d, "parts", "keep.txt")), "the caller's directory stays");
+  }
+  rmSync(d, { recursive: true });
+});
+
+test("an_input_that_looks_like_an_option_is_an_input", async () => {
+  const d = dir();
+  writeFileSync(join(d, "-o.mbox"), MBOX);
+  const cwd = process.cwd();
+  process.chdir(d);
+  try {
+    const report = await convertMail({ inputs: ["-o.mbox"], output: { file: join(d, "out.pst") }, binary });
+    assert.equal(report.written, 2);
+  } finally {
+    process.chdir(cwd);
+  }
   rmSync(d, { recursive: true });
 });
