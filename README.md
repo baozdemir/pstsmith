@@ -35,7 +35,8 @@ pstsmith: wrote 7 messages to gmail.pst
   [How it was verified](docs/VERIFICATION.md).
 - **Read back by two independent readers,** libpff and XstReader, field by field.
 - **Crash-safe appends.** Every commit is atomic: a crash or a full disk leaves the file at its last committed state.
-- **Bounded memory.** Attachments are streamed; 128,000 messages in one folder took 17 MB.
+- **Bounded memory.** The writer streams attachments from disk: 128,000 messages in one folder took 17 MB. Mail
+  input is read one message at a time, so memory follows the largest message, not the size of the input.
 - **Size-limited parts** (1, 2, 5 or 10 GB) for imports with per-file limits.
 - **Same input, same bytes,** on Linux, macOS and Windows.
 - **Nothing dropped.** Every MIME part becomes a body or an attachment; what cannot be shown as mail (an unreadable

@@ -45,6 +45,7 @@ name, which is the output file's name.
 | libpff oracle on the 6 mail fixture cases (EML, Google Takeout, Thunderbird, Apple Mail, CRLF MBOX, Maildir) | 33 messages, 0 mismatches; the negative control finds 66 |
 | XstReader and libpff reading the same mail fixture PSTs | 33 messages, 0 disagreements, attached e-mails and categories included |
 | Structure checks on the mail fixture PSTs | 6 of 6 pass |
+| **Memory** (peak RSS, macOS; the ignored test `mbox_streams_without_reading_whole_file`) | 798 MB for a 2 GiB MBOX whose largest message is 300 MiB: one message is held at a time, and the peak was about 2.5 times the largest message |
 
 The MIME mapping changes nothing in the writer: a message is mapped to the item form of the manifest and then takes
 the manifest conversion's path unchanged, so the writer checks above apply to its files too.
