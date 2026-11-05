@@ -1,0 +1,22 @@
+Date: Mon, 01 Jan 2024 11:00:00 +0000
+From: reader@example.invalid
+To: sender@example.invalid
+Subject: Read: Synthetic
+MIME-Version: 1.0
+Content-Type: multipart/report; report-type=disposition-notification; boundary="m"
+
+--m
+Content-Type: text/plain; charset=utf-8
+
+Read receipt, synthetic.
+--m
+Content-Type: message/disposition-notification
+
+Reporting-UA: synthetic.example.invalid
+Original-Recipient: rfc822; "Reader Person" <reader@example.invalid>
+Final-Recipient: rfc822; reader@example.invalid
+Original-Message-ID: <original-1@example.invalid>
+X-MSExch-Correlation-Key: AAECAwQFBgcICQoLDA0ODw==
+Disposition: manual-action/MDN-sent-manually; displayed
+
+--m--

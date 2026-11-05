@@ -145,10 +145,12 @@ impl Converter {
             return Err(error("empty-selection", 2, "no message or mail folder found in the inputs"));
         }
         if self.expunged > 0 {
-            self.warnings.push(format!("{} messages deleted in Thunderbird but not yet compacted were not converted", self.expunged));
+            let (count, verb) = if self.expunged == 1 { ("1 message".to_string(), "was") } else { (format!("{} messages", self.expunged), "were") };
+            self.warnings.push(format!("{count} deleted in Thunderbird but not yet compacted {verb} not converted"));
         }
         if self.skipped_files > 0 {
-            self.warnings.push(format!("{} files that are not mail were skipped", self.skipped_files));
+            let (count, verb) = if self.skipped_files == 1 { ("1 file that is".to_string(), "was") } else { (format!("{} files that are", self.skipped_files), "were") };
+            self.warnings.push(format!("{count} not mail {verb} skipped"));
         }
         let mut by_case: BTreeMap<Vec<String>, Vec<&Vec<String>>> = BTreeMap::new();
         for folder in &self.folders {
@@ -225,10 +227,11 @@ impl Converter {
         }
         for sub in ["cur", "new"] {
             for entry in sorted_entries(&dir.join(sub)).map_err(|e| unreadable(dir, e))? {
-                if !entry.is_file() {
+                let name = file_name(&entry);
+                // Maildir message names never start with a dot; such a file is a placeholder or a lock.
+                if !entry.is_file() || name.starts_with('.') {
                     continue;
                 }
-                let name = file_name(&entry);
                 let flags = MAILDIR_INFO.iter().find_map(|info| name.split_once(info).map(|(_, flags)| flags.to_string()));
                 let seen = sub == "cur" && flags.as_deref().is_some_and(|flags| flags.contains('S'));
                 let draft = flags.as_deref().is_some_and(|flags| flags.contains('D'));

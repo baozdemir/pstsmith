@@ -1,0 +1,11 @@
+From sender@example.invalid Mon Jan  1 10:00:00 2024
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: Apple Mail
+Date: Mon, 01 Jan 2024 10:00:00 +0000
+Message-ID: <apple-mail@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
+

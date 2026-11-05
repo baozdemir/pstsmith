@@ -1,0 +1,27 @@
+From: sender@example.invalid
+To: to@example.invalid
+Subject: Inline image
+Date: Wed, 03 Jan 2024 08:00:00 +0000
+Message-ID: <inline-image@example.invalid>
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary="rel"
+
+--rel
+Content-Type: multipart/alternative; boundary="alt"
+
+--alt
+Content-Type: text/plain; charset=utf-8
+
+See the logo.
+--alt
+Content-Type: text/html; charset=utf-8
+
+<p>See the <img src="cid:logo@example.invalid"> logo.</p>
+--alt--
+--rel
+Content-Type: image/png
+Content-ID: <logo@example.invalid>
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg==
+--rel--

@@ -1,0 +1,10 @@
+From: sender@example.invalid
+Subject: Broken boundary
+Date: Mon, 08 Jan 2024 08:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="never-closed"
+
+--never-closed
+Content-Type: text/plain
+
+No closing boundary.

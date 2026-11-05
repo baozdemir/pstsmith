@@ -1,0 +1,37 @@
+From - Mon Jan  1 10:00:00 2024
+X-Mozilla-Status: 0001
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: Read in Thunderbird
+Date: Mon, 01 Jan 2024 10:00:00 +0000
+Message-ID: <read-in-thunderbird@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
+
+From - Mon Jan  1 11:00:00 2024
+X-Mozilla-Status: 0000
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: Unread in Thunderbird
+Date: Mon, 01 Jan 2024 10:00:00 +0000
+Message-ID: <unread-in-thunderbird@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+>From the start of a line.
+>>From quoted twice.
+
+From - Mon Jan  1 12:00:00 2024
+X-Mozilla-Status: 0009
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: Deleted, not compacted
+Date: Mon, 01 Jan 2024 10:00:00 +0000
+Message-ID: <deleted,-not-compacted@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
+

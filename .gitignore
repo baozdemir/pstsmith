@@ -19,3 +19,6 @@ target/
 
 .vscode/
 .vs/
+
+# Written by tests/fixtures/generate.py (64 MiB, reproducible).
+tests/fixtures/manifest/files/large-64MiB.bin

@@ -43,6 +43,7 @@ path = "examples/gen-fixture-pst.rs"
 
 [dev-dependencies]
 serde_json = "1"
+sha2 = "0.10"
 anyhow.workspace = true
 clap.workspace = true
 codepage-strings.workspace = true

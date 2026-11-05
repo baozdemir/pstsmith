@@ -149,7 +149,8 @@ fn thunderbird_sbd_tree() {
     // Thunderbird marks deleted messages and removes them only when the folder is compacted.
     assert_eq!(folders[&key(&["Trash"])], Vec::<String>::new());
     assert_eq!(report.written(), 2);
-    assert!(report.warnings().iter().any(|warning| warning.contains("deleted in Thunderbird")));
+    assert!(report.warnings().iter().any(|warning| warning == "1 message deleted in Thunderbird but not yet compacted was not converted"), "{:?}", report.warnings());
+    assert!(report.warnings().iter().any(|warning| warning == "1 file that is not mail was skipped"), "{:?}", report.warnings());
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -173,6 +174,8 @@ fn maildir_flags_and_plus_names() {
     let info = if cfg!(windows) { "!2," } else { ":2," };
     write(&root.join(format!("cur/1700000001.1.host{info}S")), eml("seen").as_bytes());
     write(&root.join("new/1700000002.2.host"), eml("new").as_bytes());
+    // A dot file (a placeholder that keeps an empty directory in git, a lock) is not a message.
+    write(&root.join("new/.keep"), b"");
     std::fs::create_dir_all(root.join("tmp")).unwrap();
     write(&root.join(format!(".Sent/cur/1700000003.3.host{info}S")), eml("sent").as_bytes());
     std::fs::create_dir_all(root.join(".Sent/new")).unwrap();

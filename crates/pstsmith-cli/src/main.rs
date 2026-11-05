@@ -217,7 +217,8 @@ fn convert_main(args: Vec<String>) -> ExitCode {
                 (Output::Directory(path), parts) => format!("{parts} files in {}", path.display()),
             };
             let skipped = if report.skipped() > 0 { format!(" ({} left out, see the exclusion record)", report.skipped()) } else { String::new() };
-            eprintln!("pstsmith: wrote {} messages{skipped} to {place}", report.written());
+            let messages = if report.written() == 1 { "1 message".to_string() } else { format!("{} messages", report.written()) };
+            eprintln!("pstsmith: wrote {messages}{skipped} to {place}");
             for warning in report.warnings() {
                 eprintln!("warning: {warning}");
             }

@@ -1,0 +1,91 @@
+From 18000000000000000@xxx Mon Jan 01 10:00:00 +0000 2024
+X-GM-THRID: 1000000000000000000
+X-Gmail-Labels: Inbox,Important,Category Updates
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: Takeout inbox
+Date: Mon, 01 Jan 2024 10:00:00 +0000
+Message-ID: <takeout-inbox@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
+
+From 18000000000000001@xxx Mon Jan 01 10:01:00 +0000 2024
+X-GM-THRID: 1000000000000000001
+X-Gmail-Labels: Sent,Opened
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: Takeout sent
+Date: Mon, 01 Jan 2024 10:01:00 +0000
+Message-ID: <takeout-sent@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
+
+From 18000000000000002@xxx Mon Jan 01 10:02:00 +0000 2024
+X-GM-THRID: 1000000000000000002
+X-Gmail-Labels: Archived,Receipts,"Projects, 2026"
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: Takeout archived
+Date: Mon, 01 Jan 2024 10:02:00 +0000
+Message-ID: <takeout-archived@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
+
+From 18000000000000003@xxx Mon Jan 01 10:03:00 +0000 2024
+X-GM-THRID: 1000000000000000003
+X-Gmail-Labels: Inbox,Unread,Starred
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: Takeout unread
+Date: Mon, 01 Jan 2024 10:03:00 +0000
+Message-ID: <takeout-unread@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
+
+From 18000000000000004@xxx Mon Jan 01 10:04:00 +0000 2024
+X-GM-THRID: 1000000000000000004
+X-Gmail-Labels: Trash
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: Takeout trash
+Date: Mon, 01 Jan 2024 10:04:00 +0000
+Message-ID: <takeout-trash@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
+
+From 18000000000000005@xxx Mon Jan 01 10:05:00 +0000 2024
+X-GM-THRID: 1000000000000000005
+X-Gmail-Labels: Spam
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: Takeout spam
+Date: Mon, 01 Jan 2024 10:05:00 +0000
+Message-ID: <takeout-spam@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
+
+From 18000000000000006@xxx Mon Jan 01 10:06:00 +0000 2024
+X-GM-THRID: 1000000000000000006
+X-Gmail-Labels: Drafts
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: Takeout draft
+Date: Mon, 01 Jan 2024 10:06:00 +0000
+Message-ID: <takeout-draft@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
+

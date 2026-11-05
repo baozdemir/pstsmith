@@ -1,0 +1,43 @@
+From: sender@example.invalid
+To: to@example.invalid
+Subject: Fw: Middle message
+Date: Fri, 05 Jan 2024 08:00:00 +0000
+Message-ID: <forwarded@example.invalid>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="m1"
+
+--m1
+Content-Type: text/plain
+
+Forwarding.
+--m1
+Content-Type: message/rfc822
+
+From: middle@example.invalid
+To: to@example.invalid
+Subject: Middle message
+Date: Mon, 01 Jan 2024 09:00:00 +0000
+Message-ID: <middle@example.invalid>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="m2"
+
+--m2
+Content-Type: text/plain
+
+Forwarded once.
+--m2
+Content-Type: message/rfc822
+
+From: inner@example.invalid
+To: To User <to@example.invalid>
+Subject: Inner message
+Date: Mon, 01 Jan 2024 10:00:00 +0000
+Message-ID: <inner@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Forwarded twice.
+
+--m2--
+
+--m1--

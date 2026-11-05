@@ -1,0 +1,7 @@
+From: inner@example.invalid
+To: recipient@example.invalid
+Subject: Nested message
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Nested mail body
