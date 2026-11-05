@@ -20,7 +20,7 @@ doc = false
 
 [dependencies]
 pstsmith = { path = "../pstsmith", version = "0.1.0" }
-signal-hook = { version = "0.3.18", default-features = false }
+signal-hook = { version = "0.4.6", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.191"
