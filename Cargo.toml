@@ -8,7 +8,7 @@ compressed-rtf = { path = "crates/compressed-rtf" }
 [workspace.package]
 authors = ["The pstsmith contributors"]
 edition = "2021"
-rust-version = "1.82"
+rust-version = "1.88"
 repository = "https://github.com/baozdemir/pstsmith"
 homepage = "https://github.com/baozdemir/pstsmith"
 license = "MIT"

@@ -23,7 +23,7 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   atomic, streams attachments, reuses freed space, and writes allocation maps, free maps and file ends as Outlook
   does; see [docs/UPSTREAM.md](docs/UPSTREAM.md).
 - Folder names match exactly, without case folding.
-- The minimum supported Rust version is 1.85.
+- The minimum supported Rust version is 1.88 (encoding_rs, which mail-parser uses for legacy charsets, needs it).
 
 ## History of outlook-pst-rw before the fork
 

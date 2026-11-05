@@ -12,7 +12,7 @@
   <a href="https://docs.rs/pstsmith"><img alt="docs.rs" src="https://img.shields.io/docsrs/pstsmith"></a>
   <a href="https://github.com/baozdemir/pstsmith/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/baozdemir/pstsmith/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <img alt="MSRV 1.85" src="https://img.shields.io/badge/MSRV-1.85-orange.svg">
+  <img alt="MSRV 1.88" src="https://img.shields.io/badge/MSRV-1.88-orange.svg">
 </p>
 
 pstsmith turns mail into Outlook data files (`.pst`): EML files, MBOX files (Google Takeout, Thunderbird, Apple Mail),
@@ -139,7 +139,7 @@ each project's README; corrections are welcome.
 ## Versions
 
 pstsmith follows [Semantic Versioning](https://semver.org); before 1.0, a minor version may change the API. The
-minimum supported Rust version is 1.85, and raising it is a minor change. The manifest and result formats are
+minimum supported Rust version is 1.88, and raising it is a minor change. The manifest and result formats are
 versioned by their schema names.
 
 ## Contributing

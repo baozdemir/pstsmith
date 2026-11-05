@@ -50,7 +50,7 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
         with:
-          toolchain: "1.85"
+          toolchain: "1.88"
       - name: Build the library and the command line
         run: cargo build --locked -p pstsmith -p pstsmith-cli
 
