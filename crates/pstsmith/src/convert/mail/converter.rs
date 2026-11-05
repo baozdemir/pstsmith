@@ -11,7 +11,7 @@ use crate::convert::{convert_manifest, ConvertError, ManifestOptions, Output, Re
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
-use std::io::{self, BufReader, BufWriter, Read, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -43,6 +43,7 @@ pub struct Converter {
     warnings: Vec<String>,
     expunged: u64,
     skipped_files: u64,
+    linked_directories: u64,
 }
 
 impl Converter {
@@ -84,6 +85,7 @@ impl Converter {
             warnings: Vec::new(),
             expunged: 0,
             skipped_files: 0,
+            linked_directories: 0,
         })
     }
 
@@ -101,7 +103,11 @@ impl Converter {
     /// `input-unreadable` (exit 2) when the input cannot be read; `io` when staging fails.
     pub fn add_path(&mut self, input: &Path) -> Result<(), ConvertError> {
         let metadata = fs::metadata(input).map_err(|e| error("input-unreadable", 2, format!("{}: {e}", input.display())))?;
-        let name = file_name(input);
+        // An input such as ".", ".." or "/" has no name of its own: the directory it stands for gives it.
+        let name = Some(file_name(input))
+            .filter(|name| !name.is_empty())
+            .or_else(|| input.canonicalize().ok().map(|path| file_name(&path)).filter(|name| !name.is_empty()))
+            .unwrap_or_else(|| "Imported".to_string());
         if metadata.is_dir() {
             if is_maildir(input) {
                 self.add_maildir(input, &name, &["Inbox".to_string()], &[])
@@ -147,6 +153,11 @@ impl Converter {
         if self.expunged > 0 {
             let (count, verb) = if self.expunged == 1 { ("1 message".to_string(), "was") } else { (format!("{} messages", self.expunged), "were") };
             self.warnings.push(format!("{count} deleted in Thunderbird but not yet compacted {verb} not converted"));
+        }
+        if self.linked_directories > 0 {
+            let (count, verb) =
+                if self.linked_directories == 1 { ("1 symbolic link".to_string(), "was") } else { (format!("{} symbolic links", self.linked_directories), "were") };
+            self.warnings.push(format!("{count} to a directory {verb} not followed"));
         }
         if self.skipped_files > 0 {
             let (count, verb) = if self.skipped_files == 1 { ("1 file that is".to_string(), "was") } else { (format!("{} files that are", self.skipped_files), "were") };
@@ -206,10 +217,10 @@ impl Converter {
             self.folders.insert(folder[..depth].to_vec());
         }
         let file = File::open(path).map_err(|e| unreadable(path, e))?;
-        for message in mail_parser::mailbox::mbox::MessageIterator::new(BufReader::new(file)) {
-            let message = message.map_err(|e| unreadable(path, e))?;
-            let date = i64::try_from(message.internal_date()).ok().filter(|date| *date > 0);
-            let raw = without_separator_line(message.contents());
+        let mut entries = MboxEntries { reader: BufReader::new(file), line: Vec::new(), pending: None, first: true };
+        while let Some(entry) = entries.next_entry().map_err(|e| unreadable(path, e))? {
+            let (raw, date) = entry;
+            let raw = without_separator_line(&raw);
             if thunderbird_expunged(raw) {
                 self.expunged += 1;
                 continue;
@@ -252,16 +263,22 @@ impl Converter {
         Ok(())
     }
 
-    /// A directory that is not a Maildir: its entries in name order.
+    /// A directory that is not a Maildir: its entries in name order. A symbolic link to a file is read; one to a
+    /// directory is not followed (it could lead back up the tree) and is counted.
     fn walk(&mut self, dir: &Path, container: &str, folder: &[String], top: &str) -> Result<(), ConvertError> {
         for entry in sorted_entries(dir).map_err(|e| unreadable(dir, e))? {
             let name = file_name(&entry);
-            if name.starts_with('.') {
+            if name.starts_with('.') || companion_file(&name) {
                 continue;
             }
+            let link = fs::symlink_metadata(&entry).map_err(|e| unreadable(&entry, e))?.file_type().is_symlink();
             let entry_container = format!("{container}/{name}");
             let mut sub_folder = folder.to_vec();
             if entry.is_dir() {
+                if link {
+                    self.linked_directories += 1;
+                    continue;
+                }
                 let stem = name.strip_suffix(".sbd").or_else(|| name.strip_suffix(".mbox")).unwrap_or(&name).to_string();
                 sub_folder.push(stem);
                 if is_maildir(&entry) {
@@ -271,10 +288,12 @@ impl Converter {
                 }
             } else if entry.is_file() {
                 let here = if folder.is_empty() { vec![top.to_string()] } else { folder.to_vec() };
+                let empty_thunderbird_folder =
+                    fs::metadata(&entry).is_ok_and(|metadata| metadata.len() == 0) && dir.join(format!("{name}.msf")).is_file();
                 if name.to_ascii_lowercase().ends_with(".eml") {
                     let raw = fs::read(&entry).map_err(|e| unreadable(&entry, e))?;
                     self.add_message(&raw, &entry_container, &here, None, None, false)?;
-                } else if is_mbox(&entry).map_err(|e| unreadable(&entry, e))? {
+                } else if empty_thunderbird_folder || is_mbox(&entry).map_err(|e| unreadable(&entry, e))? {
                     // Apple Mail keeps a mailbox as `Name.mbox/mbox`: the folder is the directory's.
                     let target = if name == "mbox" { here } else { [folder, &[mbox_folder_name(&name)][..]].concat() };
                     self.add_mbox(&entry, &entry_container, &target)?;
@@ -285,6 +304,91 @@ impl Converter {
         }
         Ok(())
     }
+}
+
+/// Files that come with mail folders and are not mail: Thunderbird's `.msf` indexes, Apple Mail's `Info.plist` and
+/// `table_of_contents`.
+fn companion_file(name: &str) -> bool {
+    name.ends_with(".msf") || name == "Info.plist" || name == "table_of_contents"
+}
+
+/// The entries of an MBOX file, read as a stream: each one's bytes (mboxrd: one '>' removed from a quoted "From "
+/// line) and the date of its "From " line. A line starting with "From " starts an entry only when it is the file's
+/// first, or when it looks like an MBOX "From " line (a sender, a time and a four-digit year): an unquoted "From " in
+/// a body (mboxo) does not cut its message.
+struct MboxEntries<R> {
+    reader: R,
+    line: Vec<u8>,
+    pending: Option<(Vec<u8>, Option<i64>)>,
+    first: bool,
+}
+
+impl<R: BufRead> MboxEntries<R> {
+    fn next_entry(&mut self) -> io::Result<Option<(Vec<u8>, Option<i64>)>> {
+        loop {
+            self.line.clear();
+            if self.reader.read_until(b'\n', &mut self.line)? == 0 {
+                return Ok(self.pending.take());
+            }
+            let mut line: &[u8] = &self.line;
+            if self.first {
+                if let Some(rest) = line.strip_prefix(b"\xEF\xBB\xBF") {
+                    line = rest;
+                }
+                if line == b"\n" || line == b"\r\n" {
+                    continue;
+                }
+            }
+            if line.starts_with(b"From ") && (self.first || from_line_date(line).is_some()) {
+                self.first = false;
+                let date = from_line_date(line).flatten();
+                if let Some(done) = self.pending.replace((Vec::new(), date)) {
+                    return Ok(Some(done));
+                }
+                continue;
+            }
+            self.first = false;
+            if let Some((contents, _)) = self.pending.as_mut() {
+                let quoted = line.iter().position(|byte| *byte != b'>').is_some_and(|at| at > 0 && line[at..].starts_with(b"From "));
+                contents.extend_from_slice(if quoted { &line[1..] } else { line });
+            }
+        }
+    }
+}
+
+/// An MBOX "From " line's date: `Some(date)` when the line has a sender, a time and a four-digit year at its end
+/// ("From sender Mon Jan  1 10:00:00 2024", also with a time zone before the year), `Some(None)` when its date cannot
+/// be read, `None` when the line is no MBOX "From " line.
+fn from_line_date(line: &[u8]) -> Option<Option<i64>> {
+    let text = std::str::from_utf8(line).ok()?.trim_end();
+    let mut words = text.strip_prefix("From ")?.split_whitespace();
+    words.next()?;
+    let rest: Vec<&str> = words.collect();
+    let year: u16 = rest.last().filter(|year| year.len() == 4).and_then(|year| year.parse().ok())?;
+    let time = rest.iter().find(|word| word.matches(':').count() >= 1 && word.chars().all(|c| c.is_ascii_digit() || c == ':'))?;
+    const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    let month = rest.iter().find_map(|word| MONTHS.iter().position(|m| word.eq_ignore_ascii_case(m)));
+    let day = rest.iter().find_map(|word| word.parse::<u8>().ok().filter(|day| (1..=31).contains(day)));
+    let mut clock = time.split(':').map(|part| part.parse::<u8>().ok());
+    let (hour, minute, second) = (clock.next().flatten(), clock.next().flatten(), clock.next().flatten().unwrap_or(0));
+    let date = match (month, day, hour, minute) {
+        (Some(month), Some(day), Some(hour), Some(minute)) => {
+            let date = mail_parser::DateTime {
+                year,
+                month: month as u8 + 1,
+                day,
+                hour,
+                minute,
+                second,
+                tz_before_gmt: false,
+                tz_hour: 0,
+                tz_minute: 0,
+            };
+            date.is_valid().then(|| date.to_timestamp())
+        }
+        _ => None,
+    };
+    Some(date)
 }
 
 fn error(code: &'static str, exit_code: u8, detail: impl Into<String>) -> ConvertError {
@@ -318,17 +422,13 @@ fn is_maildir(dir: &Path) -> bool {
     dir.join("cur").is_dir() && dir.join("new").is_dir()
 }
 
+/// A file is an MBOX when its first line that is not empty (after a UTF-8 byte order mark) starts with "From ".
 fn is_mbox(path: &Path) -> io::Result<bool> {
-    let mut start = [0u8; 5];
-    let mut file = File::open(path)?;
-    let mut read = 0;
-    while read < start.len() {
-        match file.read(&mut start[read..])? {
-            0 => break,
-            n => read += n,
-        }
-    }
-    Ok(read == start.len() && &start == b"From ")
+    let mut start = Vec::with_capacity(4096);
+    File::open(path)?.take(4096).read_to_end(&mut start)?;
+    let start = start.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&start);
+    let first = start.iter().position(|byte| *byte != b'\r' && *byte != b'\n').map_or(&[][..], |at| &start[at..]);
+    Ok(first.starts_with(b"From "))
 }
 
 /// An MBOX entry without the blank line that separates it from the next "From " line.

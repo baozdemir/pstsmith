@@ -50,10 +50,11 @@ pub(crate) fn parse(value: &str) -> Labels {
         .find(|(label, _)| labels.iter().any(|given| given == label))
         .map_or(ARCHIVE_FOLDER, |(_, folder)| folder);
     let mut categories: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
     for label in &labels {
         let system = SYSTEM_FOLDERS.iter().any(|(name, _)| name == label);
         let tab = label.starts_with("Category ");
-        if system || tab || label == "Unread" || DROPPED.contains(&label.as_str()) || categories.contains(label) {
+        if system || tab || label == "Unread" || DROPPED.contains(&label.as_str()) || !seen.insert(label.as_str()) {
             continue;
         }
         categories.push(label.clone());
@@ -87,6 +88,14 @@ mod tests {
         let draft = parse("Drafts,Opened");
         assert_eq!(draft.folder, "Drafts");
         assert!(draft.draft);
+    }
+
+    #[test]
+    fn many_labels_are_fast() {
+        let value: Vec<String> = (0..200_000).map(|n| format!("label {n}")).collect();
+        let start = std::time::Instant::now();
+        assert_eq!(parse(&value.join(",")).categories.len(), 200_000);
+        assert!(start.elapsed() < std::time::Duration::from_secs(2), "{:?}", start.elapsed());
     }
 
     #[test]

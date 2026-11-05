@@ -65,6 +65,35 @@ fn walk(store: &Rc<dyn Store>, folder: NodeId, path: Vec<String>, out: &mut BTre
     }
 }
 
+/// Every message's PidTagMessageFlags, by subject.
+fn message_flags(path: &Path) -> BTreeMap<String, i32> {
+    let store = pstsmith::open_store(path).unwrap();
+    let root = store.properties().ipm_sub_tree_entry_id().unwrap().node_id();
+    let mut out = BTreeMap::new();
+    let mut folders = vec![root];
+    while let Some(folder) = folders.pop() {
+        let opened = store.open_folder(&store.properties().make_entry_id(folder).unwrap()).unwrap();
+        if let Some(hierarchy) = opened.hierarchy_table() {
+            folders.extend(hierarchy.rows_matrix().map(|row| NodeId::from(u32::from(row.id()))));
+        }
+        if let Some(contents) = opened.contents_table() {
+            for row in contents.rows_matrix() {
+                let message = store.open_message(&store.properties().make_entry_id(NodeId::from(u32::from(row.id()))).unwrap(), None).unwrap();
+                let subject = match message.properties().get(0x0037) {
+                    Some(PropertyValue::Unicode(value)) => value.to_string(),
+                    _ => String::new(),
+                };
+                let flags = match message.properties().get(0x0E07) {
+                    Some(PropertyValue::Integer32(value)) => *value,
+                    other => panic!("no flags: {other:?}"),
+                };
+                out.insert(subject, flags);
+            }
+        }
+    }
+    out
+}
+
 /// The plain text body of the first message in `folder`.
 fn first_body(path: &Path, folder: &[&str]) -> String {
     let store = pstsmith::open_store(path).unwrap();
@@ -114,7 +143,7 @@ fn mbox_mboxrd_unquotes_from_lines() {
 }
 
 #[test]
-fn mbox_crlf_and_lf_give_the_same_messages() {
+fn mbox_crlf_and_lf_give_the_same_folders_and_subjects() {
     let dir = temp_dir("crlf");
     let lf = dir.join("lf/Mail.mbox");
     let crlf = dir.join("crlf/Mail.mbox");
@@ -150,7 +179,8 @@ fn thunderbird_sbd_tree() {
     assert_eq!(folders[&key(&["Trash"])], Vec::<String>::new());
     assert_eq!(report.written(), 2);
     assert!(report.warnings().iter().any(|warning| warning == "1 message deleted in Thunderbird but not yet compacted was not converted"), "{:?}", report.warnings());
-    assert!(report.warnings().iter().any(|warning| warning == "1 file that is not mail was skipped"), "{:?}", report.warnings());
+    // Thunderbird's .msf index is part of the folder, not a skipped file.
+    assert!(!report.warnings().iter().any(|warning| warning.contains("not mail")), "{:?}", report.warnings());
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -188,6 +218,12 @@ fn maildir_flags_and_plus_names() {
     assert_eq!(folders[&key(&["Sent"])], vec!["sent"]);
     assert_eq!(folders[&key(&["Archive", "2024"])], vec!["archived"]);
     assert_eq!(report.written(), 4);
+    // S is read, a message in new/ is unread, D is an unsent draft without a sent time (MS-OXCMSG 2.2.1.6).
+    let flags = message_flags(&output);
+    assert_eq!(flags["seen"] & 0x01, 0x01);
+    assert_eq!(flags["new"] & 0x01, 0);
+    assert_eq!(flags["archived"] & 0x08, 0x08);
+    assert_eq!(flags["sent"] & 0x08, 0);
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -249,18 +285,15 @@ fn same_input_same_bytes_after_move() {
         path
     };
     let a = mbox(&dir.join("first place"));
-    let b = mbox(&dir.join("second/place"));
+    let b = mbox(&dir.join("second/place/deeper"));
     // The store's display name is the output file's name, so both outputs are named alike.
     std::fs::create_dir_all(dir.join("out-a")).unwrap();
     std::fs::create_dir_all(dir.join("out-b")).unwrap();
     let out_a = dir.join("out-a/archive.pst");
     let out_b = dir.join("out-b/archive.pst");
-    std::env::set_current_dir(a.parent().unwrap().parent().unwrap()).unwrap();
-    convert(&[Path::new("Mail/Inbox.mbox")], &out_a);
-    std::env::set_current_dir(b.parent().unwrap().parent().unwrap()).unwrap();
-    convert(&[Path::new("Mail/Inbox.mbox")], &out_b);
+    convert(&[&a], &out_a);
+    convert(&[&b], &out_b);
     assert_eq!(std::fs::read(&out_a).unwrap(), std::fs::read(&out_b).unwrap());
-    std::env::set_current_dir(std::env::temp_dir()).unwrap();
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -332,3 +365,93 @@ fn mbox_streams_without_reading_whole_file() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+
+#[test]
+fn a_directory_given_as_dot_dot_is_named_after_itself() {
+    let dir = temp_dir("dotdot");
+    let export = dir.join("Export");
+    write(&export.join("top.eml"), eml("top").as_bytes());
+    std::fs::create_dir_all(export.join("sub")).unwrap();
+    let output = dir.join("out.pst");
+    convert(&[&export.join("sub").join("..")], &output);
+    assert_eq!(tree(&output)[&key(&["Export"])], vec!["top"]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn every_kind_of_mapped_message_converts_through_finish() {
+    let dir = temp_dir("finish");
+    let output = dir.join("out.pst");
+    let mut converter = Converter::create(Output::File(output.clone()), &ManifestOptions::default()).unwrap();
+    let mut nested = "From: deep@example.invalid\r\nContent-Type: text/plain\r\n\r\nbottom\r\n".to_string();
+    for level in 1..=34 {
+        nested = format!("From: l{level}@example.invalid\r\nMIME-Version: 1.0\r\nContent-Type: message/rfc822\r\nContent-Disposition: attachment; filename=\".eml\"\r\n\r\n{nested}");
+    }
+    converter.add_eml(&["Inbox"], nested.as_bytes()).unwrap();
+    converter.add_eml(&["Inbox"], b"Content-Type: application/pdf\r\nContent-Disposition: attachment; filename=\"=?utf-8?q??=\"\r\n\r\nx").unwrap();
+    converter.add_eml(&["Inbox"], b"\x00 not a message").unwrap();
+    for fixture in ["report-ndr.eml", "report-read.eml", "smime-signed.eml", "smime-encrypted.eml", "attachments.eml", "forwarded-nested.eml"] {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/mail/eml").join(fixture);
+        converter.add_eml(&["Fixtures"], &std::fs::read(path).unwrap()).unwrap();
+    }
+    let report = converter.finish().unwrap();
+    assert_eq!(report.written(), 9);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn mbox_from_line_without_a_blank_line_before_does_not_split() {
+    let dir = temp_dir("mboxo");
+    let mbox = dir.join("Old.mbox");
+    let first = eml("first").replace("Body of first\r\n", "Line one\r\nFrom the start of a line, unquoted.\r\n");
+    write(&mbox, format!("From a Mon Jan  1 10:00:00 2024\r\n{first}\r\nFrom a Mon Jan  1 11:00:00 2024\r\n{}", eml("second")).as_bytes());
+    let output = dir.join("out.pst");
+    let report = convert(&[&mbox], &output);
+    assert_eq!(report.written(), 2);
+    assert_eq!(first_body(&output, &["Old"]), "Line one\r\nFrom the start of a line, unquoted.\r\n");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn mbox_with_a_bom_or_leading_blank_lines_is_read() {
+    let dir = temp_dir("bom");
+    let a = dir.join("Bom.mbox");
+    let b = dir.join("Blank.mbox");
+    write(&a, format!("\u{feff}From a Mon Jan  1 10:00:00 2024\n{}", eml("with bom")).as_bytes());
+    write(&b, format!("\n\nFrom a Mon Jan  1 10:00:00 2024\n{}", eml("after blank lines")).as_bytes());
+    let output = dir.join("out.pst");
+    let report = convert(&[&a, &b], &output);
+    assert_eq!(report.written(), 2);
+    let folders = tree(&output);
+    assert_eq!(folders[&key(&["Bom"])], vec!["with bom"]);
+    assert_eq!(folders[&key(&["Blank"])], vec!["after blank lines"]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn empty_thunderbird_folder_is_kept() {
+    let dir = temp_dir("tb-empty");
+    let profile = dir.join("Local Folders");
+    write(&profile.join("Inbox"), format!("From - Mon Jan  1 10:00:00 2024\n{}", eml("in inbox")).as_bytes());
+    write(&profile.join("Archive"), b"");
+    write(&profile.join("Archive.msf"), b"// index");
+    let output = dir.join("out.pst");
+    let report = convert(&[&profile], &output);
+    assert_eq!(tree(&output)[&key(&["Archive"])], Vec::<String>::new());
+    assert!(!report.warnings().iter().any(|warning| warning.contains("not mail")), "{:?}", report.warnings());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symbolic_link_to_a_directory_is_not_followed() {
+    let dir = temp_dir("symlink");
+    let export = dir.join("Export");
+    write(&export.join("Inbox/one.eml"), eml("one").as_bytes());
+    std::os::unix::fs::symlink(&export, export.join("Inbox/loop")).unwrap();
+    let output = dir.join("out.pst");
+    let report = convert(&[&export], &output);
+    assert_eq!(report.written(), 1);
+    assert!(report.warnings().iter().any(|warning| warning.contains("symbolic link")), "{:?}", report.warnings());
+    std::fs::remove_dir_all(&dir).unwrap();
+}

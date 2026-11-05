@@ -8,10 +8,11 @@
 //! [`MAX_NESTING`] levels, and a message the parser cannot read at all, are kept as `.eml` file attachments.
 
 use super::{labels, report, Origin, Stage};
-use mail_parser::decoders::{base64::base64_decode, quoted_printable::quoted_printable_decode};
+use mail_parser::decoders::{base64::base64_decode, charsets::map::charset_decoder, quoted_printable::quoted_printable_decode};
 use mail_parser::{Address, Encoding, HeaderValue, Message, MessageParser, MessagePart, MimeHeaders, PartType};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::io;
 
 /// Attached e-mails nest at most this many levels below the item, the writer's bound.
@@ -62,10 +63,9 @@ pub(crate) fn message_from_mime(raw: &[u8], origin: &Origin, stage: &mut dyn Sta
     };
     let labels = text_header(&message, "X-Gmail-Labels").map(labels::parse);
     let mut mapped = map(&message, &search_key, 0, stage, &mut warnings)?;
-    // The source's own state: Maildir flags, then Gmail labels, then the headers mail clients write.
-    let draft = origin.draft
-        || labels.as_ref().is_some_and(|labels| labels.draft)
-        || text_header(&message, "X-Mozilla-Draft-Info").is_some();
+    // The source's own state: Maildir flags, then Gmail labels, then the headers mail clients write. Thunderbird keeps
+    // X-Mozilla-Draft-Info on messages it sent, so that header says nothing about a draft.
+    let draft = origin.draft || labels.as_ref().is_some_and(|labels| labels.draft);
     let read = origin.seen.unwrap_or_else(|| {
         if labels.as_ref().is_some_and(|labels| labels.unread) {
             return false;
@@ -90,19 +90,39 @@ pub(crate) fn message_from_mime(raw: &[u8], origin: &Origin, stage: &mut dyn Sta
     mapped["last_modified_time"] = json!(created);
     if let Some(labels) = &labels {
         let categories = mapped["categories"].as_array_mut().expect("categories is a list");
+        let mut seen: HashSet<String> = categories.iter().filter_map(|c| c.as_str().map(str::to_string)).collect();
         for category in &labels.categories {
-            if !categories.iter().any(|existing| existing == category) {
+            if seen.insert(category.clone()) {
                 categories.push(json!(category));
             }
         }
     }
+    drop_flat(message);
     Ok(MailItem { message: mapped, folder: labels.map(|labels| labels.folder), warnings })
+}
+
+/// Drops a parsed message without recursion: the parser keeps an attached e-mail inside its parent, as deep as the
+/// input nests them, and the derived recursive drop of a hostile message would overflow the stack.
+fn drop_flat(message: Message<'_>) {
+    let mut stack = vec![message.parts];
+    while let Some(mut parts) = stack.pop() {
+        for part in &mut parts {
+            if let PartType::Message(nested) = std::mem::take(&mut part.body) {
+                stack.push(nested.parts);
+            }
+        }
+    }
 }
 
 /// A message has at least one header field with a well-formed name (RFC 5322 2.2: printable ASCII except the colon);
 /// bytes without one are not a message the parser read.
 fn readable(message: &Message<'_>) -> bool {
     message.headers().iter().any(|header| !header.name().is_empty() && header.name().bytes().all(|byte| (33..=126).contains(&byte) && byte != b':'))
+}
+
+/// A header value without its folding (RFC 5322 2.2.3) and surrounding white space.
+fn unfold(value: &str) -> String {
+    value.split(['\r', '\n']).map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join(" ")
 }
 
 fn hex16(digest: &[u8]) -> String {
@@ -165,6 +185,7 @@ fn importance(message: &Message<'_>) -> u8 {
 /// The Keywords header's comma-separated values, each once.
 fn keywords(message: &Message<'_>) -> Vec<Value> {
     let mut out: Vec<Value> = Vec::new();
+    let mut seen = HashSet::new();
     let values: Vec<String> = match message.keywords() {
         HeaderValue::TextList(list) => list.iter().map(|text| text.to_string()).collect(),
         HeaderValue::Text(text) => vec![text.to_string()],
@@ -172,7 +193,7 @@ fn keywords(message: &Message<'_>) -> Vec<Value> {
     };
     for value in values {
         for keyword in value.split(',').map(str::trim).filter(|keyword| !keyword.is_empty()) {
-            if !out.iter().any(|existing| existing == keyword) {
+            if seen.insert(keyword.to_string()) {
                 out.push(json!(keyword));
             }
         }
@@ -180,12 +201,12 @@ fn keywords(message: &Message<'_>) -> Vec<Value> {
     out
 }
 
-/// The header block as stored: every header line, without the blank line that ends the block. Bytes that are not
-/// UTF-8 are read as Latin-1.
+/// The header block as stored: every header line, without the blank line that ends the block. Each line is read as
+/// UTF-8, or as windows-1252 when it is not UTF-8.
 fn header_block(message: &Message<'_>) -> Option<String> {
-    let raw = message.raw_message();
-    let end = message.root_part().raw_body_offset() as usize;
-    let mut block = raw.get(..end)?;
+    let raw: &[u8] = message.raw_message.as_ref();
+    let root = message.root_part();
+    let mut block = raw.get(root.raw_header_offset() as usize..root.raw_body_offset() as usize)?;
     for ending in [&b"\r\n"[..], b"\n"] {
         if block.len() >= 2 * ending.len() && block.ends_with(ending) && block[..block.len() - ending.len()].ends_with(ending) {
             block = &block[..block.len() - ending.len()];
@@ -195,10 +216,15 @@ fn header_block(message: &Message<'_>) -> Option<String> {
     if block.is_empty() {
         return None;
     }
-    Some(match std::str::from_utf8(block) {
-        Ok(text) => text.to_string(),
-        Err(_) => block.iter().map(|&byte| char::from(byte)).collect(),
-    })
+    Some(block.split_inclusive(|byte| *byte == b'\n').map(|line| decode_text(line).0).collect())
+}
+
+/// Bytes as UTF-8, or as windows-1252 when they are not UTF-8 (the second value says which).
+fn decode_text(bytes: &[u8]) -> (String, bool) {
+    match std::str::from_utf8(bytes) {
+        Ok(text) => (text.to_string(), false),
+        Err(_) => (charset_decoder(b"windows-1252").map_or_else(|| String::from_utf8_lossy(bytes).into_owned(), |decode| decode(bytes)), true),
+    }
 }
 
 fn content_type(part: &MessagePart<'_>) -> (String, String) {
@@ -208,12 +234,51 @@ fn content_type(part: &MessagePart<'_>) -> (String, String) {
     }
 }
 
-/// A part is an attachment when its disposition says so, or when it has no disposition but a file name.
+/// A part is an attachment when its disposition says so or when it has a file name, whatever its disposition: mail
+/// clients send a named text file "inline" too.
 fn is_attachment(part: &MessagePart<'_>) -> bool {
-    match part.content_disposition() {
-        Some(disposition) => disposition.ctype().eq_ignore_ascii_case("attachment"),
-        None => part.attachment_name().is_some(),
+    part.content_disposition().is_some_and(|disposition| disposition.ctype().eq_ignore_ascii_case("attachment")) || name_of(part).is_some()
+}
+
+/// A part's file name, if it has one that is not empty.
+fn name_of<'a>(part: &'a MessagePart<'_>) -> Option<&'a str> {
+    part.attachment_name().filter(|name| !name.trim().is_empty())
+}
+
+/// The `cid:` references of an HTML body (RFC 2392: the scheme in any case, the Content-ID percent-encoded).
+fn cid_references(html: &str) -> HashSet<String> {
+    let mut out = HashSet::new();
+    let lower = html.to_ascii_lowercase();
+    let mut from = 0;
+    while let Some(at) = lower[from..].find("cid:") {
+        let start = from + at + 4;
+        let end = html[start..]
+            .find(|c: char| c == '"' || c == '\'' || c == '<' || c == '>' || c == ')' || c.is_whitespace())
+            .map_or(html.len(), |n| start + n);
+        out.insert(percent_decode(&html[start..end]));
+        from = end.max(start);
     }
+    out
+}
+
+fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = |b: u8| (b as char).to_digit(16);
+        match (bytes[i], bytes.get(i + 1).and_then(|b| hex(*b)), bytes.get(i + 2).and_then(|b| hex(*b))) {
+            (b'%', Some(high), Some(low)) => {
+                out.push((high * 16 + low) as u8);
+                i += 3;
+            }
+            (byte, _, _) => {
+                out.push(byte);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// A part's bytes before the transfer encoding: a text part keeps its own charset rather than the parser's Unicode.
@@ -297,16 +362,30 @@ fn leaves<'p>(message: &'p Message<'p>, root: usize, out: &mut Vec<Leaf<'p>>, se
     }
 }
 
-fn text_of(part: &MessagePart<'_>) -> String {
+/// A body part's text. A charset the parser knows (other than UTF-8) is trusted; otherwise the bytes are read as
+/// UTF-8, or as windows-1252 when they are not UTF-8, so a legacy Latin-1 or Turkish body keeps its letters.
+fn text_of(raw: &[u8], part: &MessagePart<'_>, warnings: &mut Vec<String>) -> String {
+    let charset = part.content_type().and_then(|ct| ct.attribute("charset"));
+    let trusted = charset.is_some_and(|name| {
+        let name = name.to_ascii_lowercase();
+        name != "utf-8" && name != "utf8" && charset_decoder(name.as_bytes()).is_some()
+    });
     match &part.body {
-        PartType::Text(text) | PartType::Html(text) => text.to_string(),
-        _ => String::from_utf8_lossy(part.contents()).into_owned(),
+        PartType::Text(text) | PartType::Html(text) if trusted => text.to_string(),
+        _ => {
+            let (text, legacy) = decode_text(&part_bytes(raw, part));
+            if legacy {
+                warnings.push("a body without a usable charset was read as windows-1252".to_string());
+            }
+            text
+        }
     }
 }
 
 /// The message in nested form. The top-level caller sets the origin's read state, draft state and times afterwards.
 fn map(message: &Message<'_>, search_key: &str, depth: usize, stage: &mut dyn Stage, warnings: &mut Vec<String>) -> io::Result<Value> {
-    let raw = message.raw_message();
+    // Part offsets index the bytes the parser was given: for an attached e-mail parsed inside its parent, the parent's.
+    let raw: &[u8] = message.raw_message.as_ref();
     let root = message.root_part();
     let (kind, subtype) = content_type(root);
     let mut class = "IPM.Note".to_string();
@@ -328,9 +407,14 @@ fn map(message: &Message<'_>, search_key: &str, depth: usize, stage: &mut dyn St
         // MS-OXOSMIME 2.1.3: the protected content is the one smime.p7m attachment, the whole multipart/signed entity
         // with its Content-Type header field; the body is read from the signed content for display and search.
         class = "IPM.Note.SMIME.MultipartSigned".to_string();
-        let header = message.header_raw("Content-Type").unwrap_or("");
+        let field = root
+            .headers
+            .iter()
+            .find(|header| header.name().eq_ignore_ascii_case("Content-Type"))
+            .and_then(|header| raw.get(header.offset_field() as usize..header.offset_end() as usize))
+            .unwrap_or(b"Content-Type: multipart/signed\r\n");
         let body = raw.get(root.raw_body_offset() as usize..root.raw_end_offset() as usize).unwrap_or(&[]);
-        let mut entity = format!("Content-Type:{header}").into_bytes();
+        let mut entity = field.to_vec();
         if !entity.ends_with(b"\n") {
             entity.extend_from_slice(b"\r\n");
         }
@@ -370,6 +454,7 @@ fn map(message: &Message<'_>, search_key: &str, depth: usize, stage: &mut dyn St
                         to = derived
                             .recipients
                             .into_iter()
+                            .filter(|(email, _)| !email.is_empty())
                             .map(|(email, properties)| json!({ "name": email, "email": email, "properties": properties }))
                             .collect();
                     }
@@ -381,12 +466,13 @@ fn map(message: &Message<'_>, search_key: &str, depth: usize, stage: &mut dyn St
     let mut html = Vec::new();
     for leaf in &parts {
         match leaf {
-            Leaf::Text(part) => body.push(text_of(part)),
-            Leaf::Html(part) => html.push(text_of(part)),
+            Leaf::Text(part) => body.push(text_of(raw, part, warnings)),
+            Leaf::Html(part) => html.push(text_of(raw, part, warnings)),
             _ => {}
         }
     }
     let html = if html.is_empty() { None } else { Some(html.concat()) };
+    let references = html.as_deref().map(cid_references).unwrap_or_default();
     let mut index = 0usize;
     for leaf in &parts {
         match leaf {
@@ -394,30 +480,46 @@ fn map(message: &Message<'_>, search_key: &str, depth: usize, stage: &mut dyn St
                 index += 1;
                 let (kind, subtype) = content_type(part);
                 let mime = format!("{kind}/{subtype}");
-                let name = part.attachment_name().map(str::to_string).unwrap_or_else(|| format!("attachment-{index}{}", extension(&mime)));
+                let name = name_of(part).map(str::to_string).unwrap_or_else(|| format!("attachment-{index}{}", extension(&mime)));
                 let content_id = part.content_id().map(|id| id.trim_start_matches('<').trim_end_matches('>')).filter(|id| !id.is_empty());
-                let inline = content_id.is_some_and(|id| html.as_deref().is_some_and(|html| html.contains(&format!("cid:{id}"))));
+                let inline = content_id.is_some_and(|id| references.contains(id));
                 attachments.push(file_attachment(stage, &part_bytes(raw, part), &name, &mime, content_id, inline)?);
             }
             Leaf::Message(part) => {
                 index += 1;
-                let bytes = part_bytes(raw, part);
+                // An unencoded attached e-mail the parser parsed in place; an encoded one beyond its own depth, as bytes.
+                let owned;
+                let bytes: &[u8] = match &part.body {
+                    PartType::Message(nested) => nested.raw_message(),
+                    PartType::Binary(bytes) | PartType::InlineBinary(bytes) => bytes,
+                    _ => {
+                        owned = part_bytes(raw, part);
+                        &owned
+                    }
+                };
                 let nested_key = {
                     let mut hasher = Sha256::new();
                     hasher.update(search_key.as_bytes());
                     hasher.update(format!("/{index}\0").as_bytes());
-                    hasher.update(&bytes);
+                    hasher.update(bytes);
                     hex16(&hasher.finalize())
                 };
-                let given_name = part.attachment_name().map(|name| name.strip_suffix(".eml").unwrap_or(name).to_string());
-                let nested = if depth + 1 > MAX_NESTING { None } else { parser().parse(&bytes).filter(readable) };
+                let given_name =
+                    name_of(part).map(|name| name.strip_suffix(".eml").unwrap_or(name).to_string()).filter(|name| !name.trim().is_empty());
+                let deep = depth + 1 > MAX_NESTING;
+                let reparsed = if deep || matches!(part.body, PartType::Message(_)) { None } else { parser().parse(bytes).filter(readable) };
+                let nested = match &part.body {
+                    _ if deep => None,
+                    PartType::Message(nested) => Some(nested).filter(|nested| readable(nested)),
+                    _ => reparsed.as_ref(),
+                };
                 match nested {
                     Some(nested) => {
-                        let mut inner = map(&nested, &nested_key, depth + 1, stage, warnings)?;
+                        let mut inner = map(nested, &nested_key, depth + 1, stage, warnings)?;
                         let subject = inner["subject"].as_str().unwrap_or("").to_string();
-                        let name = if subject.is_empty() { given_name.unwrap_or_else(|| "message".to_string()) } else { subject };
+                        let name = if subject.trim().is_empty() { given_name.unwrap_or_else(|| "message".to_string()) } else { subject };
                         let sent = unix_time(nested.date());
-                        let received = topmost_received(&nested).or(sent);
+                        let received = topmost_received(nested).or(sent);
                         inner["sent_time"] = json!(sent);
                         inner["received_time"] = json!(received);
                         inner["created_time"] = json!(received.unwrap_or(0));
@@ -425,17 +527,29 @@ fn map(message: &Message<'_>, search_key: &str, depth: usize, stage: &mut dyn St
                         attachments.push(json!({ "kind": "message", "name": name, "inline": false, "message": inner }));
                     }
                     None => {
-                        if depth + 1 > MAX_NESTING {
+                        if deep {
                             warnings.push(format!("attached e-mail nested deeper than {MAX_NESTING} levels kept as an .eml file"));
                         } else {
                             warnings.push("unreadable attached e-mail kept as an .eml file".to_string());
                         }
                         let name = format!("{}.eml", given_name.unwrap_or_else(|| "message".to_string()));
-                        attachments.push(file_attachment(stage, &bytes, &name, "message/rfc822", None, false)?);
+                        attachments.push(file_attachment(stage, bytes, &name, "message/rfc822", None, false)?);
                     }
+                }
+                if let Some(reparsed) = reparsed {
+                    drop_flat(reparsed);
                 }
             }
             _ => {}
+        }
+    }
+    for (tag, name) in [(0x1042u16, "In-Reply-To"), (0x1039u16, "References")] {
+        let tag_text = format!("0x{tag:04X}");
+        if properties.iter().any(|property: &Value| property["tag"] == tag_text.as_str()) {
+            continue; // a disposition report gives its own (MS-OXCMAIL 2.2.3.7.2)
+        }
+        if let Some(value) = message.header_raw(name).map(unfold).filter(|value| !value.is_empty()) {
+            properties.push(report::prop(tag, "string", json!(value)));
         }
     }
     let sender = message.from().and_then(|from| addresses(std::iter::once(from)).into_iter().next()).map(|mut address| {

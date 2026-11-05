@@ -13,6 +13,7 @@ must find mismatches. Exit 0 only when every compared field matches.
 """
 import email
 import email.policy
+import re
 import email.utils
 import hashlib
 import os
@@ -41,13 +42,21 @@ GMAIL_FOLDERS = [("Inbox", "Inbox"), ("Sent", "Sent Items"), ("Drafts", "Drafts"
 
 # ---------- the source side: discovery of messages, independent of pstsmith ----------
 
+FROM_LINE = re.compile(rb"^From \S+ .*\d:\d\d.*\b\d{4}\s*$")
+
+
 def mbox_messages(path):
-    """(raw, from-line) per entry; mboxrd: one '>' removed from a quoted From line; the separating blank line dropped."""
+    """Raw bytes per entry. A "From " line starts an entry when it is the first line (after a byte order mark and blank
+    lines) or looks like an MBOX From line (sender, time, four-digit year); mboxrd: one '>' removed from a quoted
+    From line; the separating blank line dropped."""
     data = path.read_bytes()
+    if data.startswith(b"\xef\xbb\xbf"):
+        data = data[3:]
+    data = data.lstrip(b"\r\n")
     lines = data.splitlines(keepends=True)
     out, current = [], None
     for line in lines:
-        if line.startswith(b"From "):
+        if line.startswith(b"From ") and (current is None or FROM_LINE.match(line.rstrip(b"\r\n"))):
             if current is not None:
                 out.append(current)
             current = [b""]
@@ -130,8 +139,8 @@ def walk(directory, folder, top, out):
 # ---------- what the mapping rules say a message becomes ----------
 
 def is_attachment(part):
-    disposition = part.get_content_disposition()
-    return disposition == "attachment" if disposition else part.get_filename() is not None
+    """An attachment disposition, or a file name whatever the disposition."""
+    return part.get_content_disposition() == "attachment" or bool((part.get_filename() or "").strip())
 
 
 def leaves(message):

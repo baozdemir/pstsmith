@@ -4,9 +4,10 @@ Every message here is synthetic: every address is in `example.invalid`, and no t
 are compared byte for byte, so `.gitattributes` keeps git from converting their line endings.
 
 - `manifest/`: manifests of the JSONL input format (`docs/MANIFEST.md`), v1 and v2, with the attachment files they
-  name in `manifest/files/`. Paths are written as `@FIXTURES@/files/...`; the test resolves them. The files checked
-  with SCANPST, classic Outlook and a Microsoft 365 import (`docs/VERIFICATION.md`) were written from these manifests by
-  the same writer; they differ from the outputs here only in the store's display name, which is the output file's name.
+  name in `manifest/files/`. Paths are written as `@FIXTURES@/files/...`; the test resolves them. 17 of the 20
+  files checked with SCANPST, classic Outlook and a Microsoft 365 import (`docs/VERIFICATION.md`) were written from
+  these manifests by the same writer; they differ from the outputs here only in the store's display name, which is the
+  output file's name.
   - `files/smime/`: S/MIME content made once with OpenSSL for a self-signed certificate, "Synthetic SMIME Sender"
     (`synthetic-signer-cert.pem`); its private key was deleted after use.
   - `files/large-64MiB.bin` is not committed: `python3 tests/fixtures/generate.py` writes it (the first MiB of

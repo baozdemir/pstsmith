@@ -124,10 +124,12 @@ pub(crate) fn status_codes(status: &str) -> Option<(i64, i64, i64)> {
 fn blocks(text: &str) -> Vec<Vec<(String, String)>> {
     let mut out = Vec::new();
     let mut current: Vec<(String, String)> = Vec::new();
+    let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for line in text.replace("\r\n", "\n").split('\n') {
         if line.trim().is_empty() {
             if !current.is_empty() {
                 out.push(std::mem::take(&mut current));
+                index.clear();
             }
         } else if line.starts_with([' ', '\t']) && !current.is_empty() {
             let last = current.last_mut().expect("not empty");
@@ -135,9 +137,12 @@ fn blocks(text: &str) -> Vec<Vec<(String, String)>> {
             last.1.push_str(line.trim());
         } else if let Some((name, value)) = line.split_once(':') {
             let (name, value) = (name.trim().to_string(), value.trim().to_string());
-            match current.iter_mut().find(|(existing, _)| *existing == name) {
-                Some(existing) => existing.1 = value,
-                None => current.push((name, value)),
+            match index.get(&name) {
+                Some(&at) => current[at].1 = value,
+                None => {
+                    index.insert(name.clone(), current.len());
+                    current.push((name, value));
+                }
             }
         }
     }
@@ -302,6 +307,15 @@ mod tests {
         let mut sorted = tags.clone();
         sorted.sort();
         assert_eq!(tags, sorted);
+    }
+
+    #[test]
+    fn many_fields_in_one_block_are_fast() {
+        let fields: String = (0..200_000).map(|n| format!("X-Field-{n}: value\r\n")).collect();
+        let start = std::time::Instant::now();
+        let report = delivery_status(&format!("{fields}\r\n{}", DSN.split_once("\r\n\r\n").unwrap().1), SENT);
+        assert_eq!(report.suffix, Some(".NDR"));
+        assert!(start.elapsed() < std::time::Duration::from_secs(2), "{:?}", start.elapsed());
     }
 
     #[test]

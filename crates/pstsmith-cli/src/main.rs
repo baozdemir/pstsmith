@@ -2,7 +2,8 @@
 //!
 //! `pstsmith convert INPUT...` converts EML files, MBOX files, Maildir directories and Thunderbird or Apple Mail folders
 //! (see [`pstsmith::convert::mail::Converter::add_path`]); a human-readable summary goes to stderr, and with `--json`
-//! the `pst-export-result/1` line to stdout.
+//! the `pst-export-result/1` line to stdout. Its warnings name the item concerned by its input path, for the person
+//! running the command; the manifest mode below writes no file names.
 //!
 //! `pstsmith --manifest FILE` converts a JSONL manifest of mail items into one PST file or size-limited parts:
 //!
