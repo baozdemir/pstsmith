@@ -1882,7 +1882,7 @@ impl VerifiedAttachment {
                 }
             }
         }
-        let digest = format!("{:x}", self.hasher.clone().finalize());
+        let digest = super::hex(&self.hasher.clone().finalize());
         if !digest.eq_ignore_ascii_case(&self.sha256) {
             return Err(self.fail(
                 "source-mismatch",
@@ -2768,7 +2768,7 @@ impl ManifestReader {
     }
 
     fn finish(self) -> String {
-        format!("{:x}", self.hasher.finalize())
+        super::hex(&self.hasher.finalize())
     }
 }
 
@@ -3092,7 +3092,7 @@ fn convert(options: &Options, created: &mut Created) -> Result<serde_json::Value
             record.file.sync_all()?;
             let path = options.excluded.as_ref().expect("a record has a path");
             Some(
-                serde_json::json!({ "path": path.to_string_lossy(), "items": record.items, "sha256": format!("{:x}", record.hasher.finalize()) }),
+                serde_json::json!({ "path": path.to_string_lossy(), "items": record.items, "sha256": super::hex(&record.hasher.finalize()) }),
             )
         }
     };

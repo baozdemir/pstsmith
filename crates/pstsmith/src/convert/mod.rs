@@ -200,3 +200,8 @@ pub(crate) fn convert_manifest_until(
         warnings: Vec::new(),
     })
 }
+
+/// Lower-case hexadecimal, as the result protocol writes SHA-256 digests.
+pub(crate) fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}

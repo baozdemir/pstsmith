@@ -21,7 +21,10 @@ fn fixtures() -> PathBuf {
 }
 
 fn sha256(path: &Path) -> String {
-    format!("{:x}", Sha256::digest(std::fs::read(path).unwrap()))
+    Sha256::digest(std::fs::read(path).unwrap())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 /// The cases and their mail inputs: a name (the output's file name, and so its store's display name) and the inputs.

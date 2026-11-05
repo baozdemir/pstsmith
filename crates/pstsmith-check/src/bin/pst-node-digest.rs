@@ -18,13 +18,15 @@ fn main() {
     for (nid, parent, data, subnodes) in nodes {
         let sub: Vec<serde_json::Value> = subnodes
             .iter()
-            .map(|(path, data)| {
-                serde_json::json!([path, data.len(), format!("{:x}", Sha256::digest(data))])
-            })
+            .map(|(path, data)| serde_json::json!([path, data.len(), hex(&Sha256::digest(data))]))
             .collect();
         println!(
             "{}",
-            serde_json::json!({"nid": nid, "parent": parent, "len": data.len(), "sha256": format!("{:x}", Sha256::digest(&data)), "sub": sub})
+            serde_json::json!({"nid": nid, "parent": parent, "len": data.len(), "sha256": hex(&Sha256::digest(&data)), "sub": sub})
         );
     }
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }

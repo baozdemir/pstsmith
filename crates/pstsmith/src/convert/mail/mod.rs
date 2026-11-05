@@ -43,7 +43,7 @@ pub(crate) trait Stage {
 }
 
 pub(crate) fn sha256_hex(data: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(data))
+    super::hex(&Sha256::digest(data))
 }
 
 #[cfg(test)]
