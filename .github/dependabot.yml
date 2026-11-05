@@ -10,6 +10,14 @@ updates:
       cargo:
         patterns: ["*"]
         update-types: ["patch"]
+    ignore:
+      # The output bytes follow the MIME parser: its breaking releases are taken by hand, with the fixtures and the
+      # libpff oracle.
+      - dependency-name: "mail-parser"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      # Used only by the example browse_pst, a terminal viewer.
+      - dependency-name: "ratatui"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
