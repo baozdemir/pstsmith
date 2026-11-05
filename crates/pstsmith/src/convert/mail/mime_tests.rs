@@ -316,6 +316,48 @@ fn gmail_labels_set_folder_read_state_and_categories() {
 }
 
 #[test]
+fn a_category_name_with_a_list_separator_is_written_without_it_and_reported() {
+    // Outlook and Exchange separate categories with a comma or a semicolon (the locale's list separator); a Purview
+    // import dropped a message whose category was the Gmail label "Projects, 2026".
+    let raw = SIMPLE.replace(
+        "Subject:",
+        "X-Gmail-Labels: Archived,\"Projects, 2026\",Receipts,\"Projects 2026\",\";\"\r\nKeywords: Teklif; 2027, Müşteri\r\nSubject:",
+    );
+    let (item, _) = map_bytes(raw.as_bytes(), &origin());
+    assert_eq!(
+        item.message["categories"],
+        json!(["Teklif 2027", "Müşteri", "Projects 2026", "Receipts"])
+    );
+    let reported: Vec<&String> = item
+        .warnings
+        .iter()
+        .filter(|warning| warning.contains("category"))
+        .collect();
+    assert_eq!(reported.len(), 3, "{:?}", item.warnings);
+    assert!(reported
+        .iter()
+        .any(|warning| warning.contains("\"Projects, 2026\"")
+            && warning.contains("\"Projects 2026\"")));
+    assert!(reported
+        .iter()
+        .any(|warning| warning.contains("\"Teklif; 2027\"")));
+    assert!(reported
+        .iter()
+        .any(|warning| warning.contains("\";\"") && warning.contains("left out")));
+}
+
+#[test]
+fn a_category_name_without_a_list_separator_is_unchanged_and_unreported() {
+    let raw = SIMPLE.replace(
+        "Subject:",
+        "X-Gmail-Labels: Archived,Clients\r\nKeywords: Project X\r\nSubject:",
+    );
+    let (item, _) = map_bytes(raw.as_bytes(), &origin());
+    assert_eq!(item.message["categories"], json!(["Project X", "Clients"]));
+    assert!(item.warnings.is_empty(), "{:?}", item.warnings);
+}
+
+#[test]
 fn read_state_order() {
     let read = |headers: &str, origin: &Origin| {
         let raw = SIMPLE.replace("Subject:", &format!("{headers}Subject:"));

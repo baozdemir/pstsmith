@@ -128,8 +128,10 @@ pub(crate) fn message_from_mime(
             .filter_map(|c| c.as_str().map(str::to_string))
             .collect();
         for category in &labels.categories {
-            if seen.insert(category.clone()) {
-                categories.push(json!(category));
+            if let Some(category) = category_name(category, &mut warnings) {
+                if seen.insert(category.clone()) {
+                    categories.push(json!(category));
+                }
             }
         }
     }
@@ -241,8 +243,30 @@ fn importance(message: &Message<'_>) -> u8 {
     }
 }
 
+/// A category as Outlook and Exchange can hold it. They separate categories with a comma or a semicolon (the locale's
+/// list separator), and a Purview import dropped a message whose category had a comma; so each separator becomes a
+/// space, and the change is reported. A name that is nothing but separators is left out.
+fn category_name(name: &str, warnings: &mut Vec<String>) -> Option<String> {
+    if !name.contains([',', ';']) {
+        return Some(name.to_string());
+    }
+    let written = name
+        .replace([',', ';'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let why = "Outlook and Exchange separate categories with commas and semicolons";
+    if written.is_empty() {
+        warnings.push(format!("category {name:?} left out: {why}"));
+        None
+    } else {
+        warnings.push(format!("category {name:?} written as {written:?}: {why}"));
+        Some(written)
+    }
+}
+
 /// The Keywords header's comma-separated values, each once.
-fn keywords(message: &Message<'_>) -> Vec<Value> {
+fn keywords(message: &Message<'_>, warnings: &mut Vec<String>) -> Vec<Value> {
     let mut out: Vec<Value> = Vec::new();
     let mut seen = HashSet::new();
     let values: Vec<String> = match message.keywords() {
@@ -256,8 +280,10 @@ fn keywords(message: &Message<'_>) -> Vec<Value> {
             .map(str::trim)
             .filter(|keyword| !keyword.is_empty())
         {
-            if seen.insert(keyword.to_string()) {
-                out.push(json!(keyword));
+            if let Some(keyword) = category_name(keyword, warnings) {
+                if seen.insert(keyword.clone()) {
+                    out.push(json!(keyword));
+                }
             }
         }
     }
@@ -783,7 +809,7 @@ fn map(
         "is_draft": false,
         "is_read": true,
         "importance": importance(message),
-        "categories": keywords(message),
+        "categories": keywords(message, warnings),
         "transport_headers": header_block(message),
         "properties": properties,
         "attachments": attachments,

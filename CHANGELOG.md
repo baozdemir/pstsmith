@@ -16,6 +16,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   Thunderbird, Apple Mail), Maildir and Maildir++ directories, mapped following MS-OXCMAIL: bodies, inline images,
   attachments with their original bytes, attached e-mails, S/MIME as MS-OXOSMIME stores it, delivery and read reports,
   Gmail labels, read and draft state, importance, categories, In-Reply-To and References, the original headers.
+  A category name from a Gmail label or a Keywords header has each comma and semicolon written as a space, with a
+  warning: Outlook and Exchange separate categories with them, and a Microsoft 365 import dropped a message whose
+  category had a comma.
   Maildir++ folder names in IMAP's modified UTF-7 (Dovecot, Courier) are decoded; an MBOX "From " line whose date is
   written as in a Date header starts a message when a blank line comes before it and a header field after it.
   `Converter::set_cancel_flag` stops a conversion cleanly (it removes what it created), and `Converter::staging_dir`

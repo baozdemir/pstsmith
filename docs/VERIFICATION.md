@@ -58,6 +58,8 @@ the manifest conversion's path unchanged, so the writer checks above apply to it
 - **Not written:** ANSI (Outlook 97-2002) files; cyclic-encoded files (appending to one is refused); contacts,
   calendar items and tasks as their own item types (a calendar invitation arrives as mail with its `.ics` attached);
   TNEF (`winmail.dat`) is kept as an attachment, not decoded; files are never compacted.
+- **Category names** from Gmail labels and Keywords headers have each comma and semicolon written as a space (with a
+  warning), since Outlook and Exchange separate categories with them; a manifest's `categories` are written as given.
 - **Not mapped from MIME:** Reply-To (it stays in the original headers, but a reply in Outlook goes to the sender);
   a recipient without an address (it stays in the original headers).
 - **Folder names are used as the file system gives them,** without Unicode normalization: a name stored decomposed

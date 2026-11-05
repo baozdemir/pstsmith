@@ -87,7 +87,7 @@ manifest or write it differently gets a new schema number, and older schemas kee
 | `is_draft` | bool | no | mfUnsent in PidTagMessageFlags (MS-OXCMSG 2.2.1.6). A draft has `sent_time` null. |
 | `is_read` | bool | no | The read state. |
 | `importance` | integer | no | PidTagImportance: 0 low, 1 normal, 2 high. |
-| `categories` | [string] | no | The categories (PidNameKeywords). |
+| `categories` | [string] | no | The categories (PidNameKeywords), written as given. Outlook and Exchange separate categories with commas and semicolons, and a Microsoft 365 import dropped a message whose category had a comma; leave both out of names meant for an import. |
 | `transport_headers` | string | yes | PidTagTransportMessageHeaders, exactly as given; an empty string is written present and empty. Null writes none. |
 | `properties` | [property] | no | Given properties. See "Given properties". |
 | `attachments` | [attachment] | no | In display order. |
