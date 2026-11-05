@@ -236,7 +236,7 @@ where
                 node.sub_node(),
                 None,
             );
-            let attachment_node = node.clone();
+            let attachment_node = node;
 
             let mut page_cache = pst.block_cache();
             let data = node.data();

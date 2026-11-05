@@ -2958,7 +2958,7 @@ fn set_inline_property(
         let (page, start, end) = allocation(pages, node)?;
         let record = if level > 0 { 6 } else { 8 };
         let data = &pages[page][start..end];
-        if data.len() % record != 0 {
+        if !data.len().is_multiple_of(record) {
             return Err(invalid("a BTH node is not a whole number of records"));
         }
         let mut keys = data
@@ -3999,7 +3999,7 @@ fn find_table_row(
         });
         if level > 0 {
             // An intermediate record's key is the smallest key under it (2.3.2.2): the last one not above `row`.
-            match records.filter(|(key, _)| *key <= row).last() {
+            match records.rfind(|(key, _)| *key <= row) {
                 Some((_, child)) => node = HeapId::from(child),
                 None => return Ok(None),
             }
@@ -4492,6 +4492,7 @@ fn attachment_table_data(
 
 /// `attachment_table_data`, plus each cell written in a subnode as (its node, the attachment's position, the column's
 /// property ID), so that the cell can share the block of its attachment's value.
+#[allow(clippy::type_complexity)]
 fn attachment_table_data_keyed(
     attachment_ids: &[NodeId],
     attachments: &[UnicodePstAttachment<'_>],
@@ -5204,13 +5205,13 @@ fn push_block_with_id(
 }
 
 fn map_page_count(amap_index: u64) -> u64 {
-    let has_pmap = amap_index % PMAP_PAGE_COUNT == 0;
+    let has_pmap = amap_index.is_multiple_of(PMAP_PAGE_COUNT);
     let has_fmap = has_pmap
         && amap_index >= FMAP_FIRST_SIZE
-        && (amap_index - FMAP_FIRST_SIZE) % FMAP_PAGE_COUNT == 0;
+        && (amap_index - FMAP_FIRST_SIZE).is_multiple_of(FMAP_PAGE_COUNT);
     let has_fpmap = has_pmap
         && amap_index >= FPMAP_FIRST_SIZE
-        && (amap_index - FPMAP_FIRST_SIZE) % FPMAP_PAGE_COUNT == 0;
+        && (amap_index - FPMAP_FIRST_SIZE).is_multiple_of(FPMAP_PAGE_COUNT);
     1 + u64::from(has_pmap) + u64::from(has_fmap) + u64::from(has_fpmap)
 }
 
@@ -5947,6 +5948,7 @@ fn push_data_tree_from_stream(
     tree.finish(blocks, next_bid, next_offset)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn push_attachments(
     blocks: &mut Vec<NewBlock>,
     next_bid: &mut u64,
@@ -6887,7 +6889,7 @@ fn set_unicode_store_display_name(core: &mut WriterCore, name: &str) -> io::Resu
             "store display name must not be empty",
         ));
     }
-    core.run(|mut file, state, store| {
+    core.run(|file, state, store| {
         let header = state.header.clone();
         let old_root = header.root().clone();
         let mut tx = Tx::new(state);
@@ -6912,7 +6914,7 @@ fn set_unicode_store_display_name(core: &mut WriterCore, name: &str) -> io::Resu
         let mut next_offset = tx.file_space();
         let mut blocks = Vec::new();
         let mut subnodes =
-            collect_subnode_entries(&mut file, *old_root.block_btree(), store_entry.sub_node())?;
+            collect_subnode_entries(file, *old_root.block_btree(), store_entry.sub_node())?;
         let next_property_subnode = subnodes
             .iter()
             .filter(|entry| {
@@ -6967,420 +6969,391 @@ fn set_unicode_store_display_name(core: &mut WriterCore, name: &str) -> io::Resu
 fn create_unicode_folder(core: &mut WriterCore, parent: NodeId, name: &str) -> io::Result<NodeId> {
     // The session's append state of the parent's hierarchy table, as for contents tables.
     let cached = core.hierarchy.remove(&u32::from(parent));
-    let (folder, hierarchy_state, grandparent_roots) =
-        core.run(move |mut file, state, store| {
-            let header = state.header.clone();
-            let old_root = header.root().clone();
-            let mut tx = Tx::new(state);
-            let store_record_key = *store.properties().record_key()?.record_key();
-            let parent_folder = store.open_folder(&store.properties().make_entry_id(parent)?)?;
-            let parent_has_subfolders = parent_folder.properties().has_sub_folders()?;
-            let parent_entry = tx.node(parent)?.ok_or_else(|| {
-                io::Error::new(io::ErrorKind::NotFound, "parent folder node not found")
-            })?;
-            let mut parent_properties = writable_folder_properties(parent_folder.as_ref());
-            if !parent_has_subfolders {
-                set_folder_boolean_property(&mut parent_properties, 0x360A, true);
-            }
-            let mut parent_subnodes = collect_subnode_entries(
-                &mut file,
-                *old_root.block_btree(),
-                parent_entry.sub_node(),
-            )?;
-            let parent_row_hierarchy = (!parent_has_subfolders)
-                .then(|| -> io::Result<_> {
-                    let grandparent = parent_entry.parent().ok_or_else(|| {
-                        io::Error::new(io::ErrorKind::InvalidData, "parent folder has no parent")
-                    })?;
-                    let node = NodeId::new(NodeIdType::HierarchyTable, grandparent.index())?;
-                    let entry = tx.node(node)?.ok_or_else(|| {
-                        io::Error::new(io::ErrorKind::NotFound, "parent hierarchy node not found")
-                    })?;
-                    let subnodes = collect_subnode_entries(
-                        &mut file,
-                        *old_root.block_btree(),
-                        entry.sub_node(),
-                    )?;
-                    Ok((grandparent, node, entry, subnodes))
+    let (folder, hierarchy_state, grandparent_roots) = core.run(move |file, state, store| {
+        let header = state.header.clone();
+        let old_root = header.root().clone();
+        let mut tx = Tx::new(state);
+        let store_record_key = *store.properties().record_key()?.record_key();
+        let parent_folder = store.open_folder(&store.properties().make_entry_id(parent)?)?;
+        let parent_has_subfolders = parent_folder.properties().has_sub_folders()?;
+        let parent_entry = tx.node(parent)?.ok_or_else(|| {
+            io::Error::new(io::ErrorKind::NotFound, "parent folder node not found")
+        })?;
+        let mut parent_properties = writable_folder_properties(parent_folder.as_ref());
+        if !parent_has_subfolders {
+            set_folder_boolean_property(&mut parent_properties, 0x360A, true);
+        }
+        let mut parent_subnodes =
+            collect_subnode_entries(file, *old_root.block_btree(), parent_entry.sub_node())?;
+        let parent_row_hierarchy = (!parent_has_subfolders)
+            .then(|| -> io::Result<_> {
+                let grandparent = parent_entry.parent().ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "parent folder has no parent")
+                })?;
+                let node = NodeId::new(NodeIdType::HierarchyTable, grandparent.index())?;
+                let entry = tx.node(node)?.ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::NotFound, "parent hierarchy node not found")
+                })?;
+                let subnodes =
+                    collect_subnode_entries(file, *old_root.block_btree(), entry.sub_node())?;
+                Ok((grandparent, node, entry, subnodes))
+            })
+            .transpose()?;
+
+        let folder_index = tx
+            .max_node_index(NodeIdType::NormalFolder)
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or(PstError::IntegerConversion)?
+            .max(header.next_node_index(NodeIdType::NormalFolder)?);
+        let folder = NodeId::new(NodeIdType::NormalFolder, folder_index)?;
+        let hierarchy = NodeId::new(NodeIdType::HierarchyTable, parent.index())?;
+        let hierarchy_entry = tx.node(hierarchy)?;
+        let hierarchy_template = tx.node(NodeId::from(0x60D))?.map(|entry| entry.data());
+        let contents_template = tx.node(NodeId::from(0x60E))?.map(|entry| entry.data());
+        let associated_contents_template = tx.node(NodeId::from(0x60F))?.map(|entry| entry.data());
+
+        let mut next_bid = header
+            .next_block()
+            .index()
+            .max(tx.max_block_index().unwrap_or(0).saturating_add(1));
+        let mut next_offset = tx.file_space();
+        let mut blocks = Vec::new();
+
+        let mut new_hierarchy_state = None;
+        let (hierarchy_data_bid, hierarchy_subnode_bid) = if let Some(hierarchy_entry) =
+            hierarchy_entry
+        {
+            let mut hierarchy_subnodes =
+                collect_subnode_entries(file, *old_root.block_btree(), hierarchy_entry.sub_node())?;
+            // The new row is appended along paths with the session's state of the table; the table is read in full only
+            // to build that state (once per parent and session) or to rebuild a table whose rows are in the heap or
+            // absent.
+            let read_table = || {
+                parent_folder.hierarchy_table().cloned().ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::NotFound, "parent hierarchy table not found")
                 })
-                .transpose()?;
-
-            let folder_index = tx
-                .max_node_index(NodeIdType::NormalFolder)
-                .unwrap_or(0)
-                .checked_add(1)
-                .ok_or(PstError::IntegerConversion)?
-                .max(header.next_node_index(NodeIdType::NormalFolder)?);
-            let folder = NodeId::new(NodeIdType::NormalFolder, folder_index)?;
-            let hierarchy = NodeId::new(NodeIdType::HierarchyTable, parent.index())?;
-            let hierarchy_entry = tx.node(hierarchy)?;
-            let hierarchy_template = tx.node(NodeId::from(0x60D))?.map(|entry| entry.data());
-            let contents_template = tx.node(NodeId::from(0x60E))?.map(|entry| entry.data());
-            let associated_contents_template =
-                tx.node(NodeId::from(0x60F))?.map(|entry| entry.data());
-
-            let mut next_bid = header
-                .next_block()
-                .index()
-                .max(tx.max_block_index().unwrap_or(0).saturating_add(1));
-            let mut next_offset = tx.file_space();
-            let mut blocks = Vec::new();
-
-            let mut new_hierarchy_state = None;
-            let (hierarchy_data_bid, hierarchy_subnode_bid) = if let Some(hierarchy_entry) =
-                hierarchy_entry
-            {
-                let mut hierarchy_subnodes = collect_subnode_entries(
-                    &mut file,
-                    *old_root.block_btree(),
-                    hierarchy_entry.sub_node(),
-                )?;
-                // The new row is appended along paths with the session's state of the table; the table is read in full only
-                // to build that state (once per parent and session) or to rebuild a table whose rows are in the heap or
-                // absent.
-                let read_table = || {
-                    parent_folder.hierarchy_table().cloned().ok_or_else(|| {
-                        io::Error::new(io::ErrorKind::NotFound, "parent hierarchy table not found")
-                    })
-                };
-                let had_state = cached.is_some();
-                let cached = cached.filter(|state| {
-                    state.heap_root == hierarchy_entry.data()
-                        && hierarchy_subnodes
-                            .iter()
-                            .any(|entry| entry.block() == state.rows_root)
-                });
-                if had_state && cached.is_none() {
-                    // A state the session kept no longer describes the table: some commit changed it without updating it.
-                    crate::session::count_hierarchy_fallback();
+            };
+            let had_state = cached.is_some();
+            let cached = cached.filter(|state| {
+                state.heap_root == hierarchy_entry.data()
+                    && hierarchy_subnodes
+                        .iter()
+                        .any(|entry| entry.block() == state.rows_root)
+            });
+            if had_state && cached.is_none() {
+                // A state the session kept no longer describes the table: some commit changed it without updating it.
+                crate::session::count_hierarchy_fallback();
+            }
+            let mut state = match cached {
+                Some(state) => Some(state),
+                None => {
+                    let table = read_table()?;
+                    let rows_node = table_rows_node(table.context(), &hierarchy_subnodes)?;
+                    let rows_block = hierarchy_subnodes
+                        .iter()
+                        .find(|entry| entry.node() == rows_node)
+                        .map(|entry| entry.block());
+                    load_contents_state(table.as_ref(), hierarchy_entry.data(), rows_block, 0)?
                 }
-                let mut state = match cached {
-                    Some(state) => Some(state),
-                    None => {
-                        let table = read_table()?;
-                        let rows_node = table_rows_node(table.context(), &hierarchy_subnodes)?;
-                        let rows_block = hierarchy_subnodes
+            };
+            let mut appended = None;
+            if let Some(state) = state.as_mut().filter(|_| hierarchy_path_edits()) {
+                if let Some(view) = open_contents_append(file, &tx, state)? {
+                    let rows_node = view
+                        .context
+                        .rows()
+                        .ok_or_else(|| io::Error::other("table rows node is missing"))?;
+                    let mut rows = vec![(
+                        folder,
+                        view.context
+                            .columns()
                             .iter()
-                            .find(|entry| entry.node() == rows_node)
-                            .map(|entry| entry.block());
-                        load_contents_state(table.as_ref(), hierarchy_entry.data(), rows_block, 0)?
-                    }
-                };
-                let mut appended = None;
-                if let Some(state) = state.as_mut().filter(|_| hierarchy_path_edits()) {
-                    if let Some(view) = open_contents_append(&mut file, &tx, state)? {
-                        let rows_node = view
-                            .context
-                            .rows()
-                            .ok_or_else(|| io::Error::other("table rows node is missing"))?;
-                        let mut rows = vec![(
-                            folder,
-                            view.context
-                                .columns()
-                                .iter()
-                                .map(|column| {
-                                    new_folder_table_cell(
-                                        column,
-                                        store_record_key,
-                                        folder,
-                                        name,
-                                        false,
-                                        header.unique_value(),
-                                    )
-                                })
-                                .collect::<io::Result<Vec<_>>>()?,
-                        )];
-                        appended = append_rows_to_state(
-                            &mut file,
-                            &mut tx,
-                            state,
-                            Some(view),
-                            &mut rows,
-                            header.unique_value(),
-                            &mut blocks,
-                            &mut next_bid,
-                            &mut next_offset,
-                        )?
-                        .map(|(heap, rows, _)| (heap, rows_node, rows));
-                    }
-                    if appended.is_none() {
-                        crate::session::count_hierarchy_fallback();
-                    }
-                }
-                let (data, rows_node, rows) = match appended {
-                    Some(appended) => {
-                        new_hierarchy_state = state;
-                        appended
-                    }
-                    None => {
-                        let table = read_table()?;
-                        let rows_node = table_rows_node(table.context(), &hierarchy_subnodes)?;
-                        let (pages, rows, row_ids) = rebuild_hierarchy_table(
-                            table.as_ref(),
-                            store_record_key,
-                            folder,
-                            name,
-                            false,
-                            rows_node,
-                            header.unique_value(),
-                        )?;
-                        let data = push_data_tree_chunks(
-                            &mut blocks,
-                            &mut next_bid,
-                            &mut next_offset,
-                            pages,
-                        )?;
-                        let rows = push_data_tree_chunks(
-                            &mut blocks,
-                            &mut next_bid,
-                            &mut next_offset,
-                            rows,
-                        )?;
-                        new_hierarchy_state = Some(ContentsState {
-                            row_count: row_ids.len(),
-                            last_id: row_ids.iter().map(|id| u32::from(*id)).max(),
-                            unread: 0,
-                            heap_root: data,
-                            rows_root: rows,
-                        });
-                        (data, rows_node, rows)
-                    }
-                };
-                hierarchy_subnodes.retain(|entry| entry.node() != rows_node);
-                hierarchy_subnodes.push(UnicodeLeafSubNodeTreeEntry::new(rows_node, rows, None));
-                let subnodes = push_subnode_tree(
-                    &mut blocks,
-                    &mut next_bid,
-                    &mut next_offset,
-                    hierarchy_subnodes,
-                )?;
-                (data, Some(subnodes))
-            } else {
-                let data = push_block(
-                    &mut blocks,
-                    &mut next_bid,
-                    &mut next_offset,
-                    false,
-                    NewBlockData::Data(table_context_data(&[folder])?),
-                )?;
-                (data, None)
-            };
-
-            let (parent_data, parent_subnode) = if parent_has_subfolders {
-                (parent_entry.data(), parent_entry.sub_node())
-            } else {
-                let next_property_subnode = parent_subnodes
-                    .iter()
-                    .filter(|entry| {
-                        matches!(
-                            entry.node().id_type(),
-                            Ok(NodeIdType::Internal | NodeIdType::ListsTablesProperties)
-                        )
-                    })
-                    .map(|entry| entry.node().index())
-                    .max()
-                    .unwrap_or(0)
-                    .checked_add(1)
-                    .ok_or(PstError::IntegerConversion)?;
-                let (parent_pages, external_properties) =
-                    property_context_pages(parent_properties, next_property_subnode)?;
-                let parent_data = push_data_tree_chunks(
-                    &mut blocks,
-                    &mut next_bid,
-                    &mut next_offset,
-                    parent_pages,
-                )?;
-                for (node, data) in external_properties {
-                    let data = push_data_tree(&mut blocks, &mut next_bid, &mut next_offset, &data)?;
-                    parent_subnodes.push(UnicodeLeafSubNodeTreeEntry::new(node, data, None));
-                }
-                let parent_subnode = if parent_subnodes.is_empty() {
-                    None
-                } else {
-                    Some(push_subnode_tree(
-                        &mut blocks,
-                        &mut next_bid,
-                        &mut next_offset,
-                        parent_subnodes,
-                    )?)
-                };
-                (parent_data, parent_subnode)
-            };
-
-            let folder_data_bid = push_block(
-                &mut blocks,
-                &mut next_bid,
-                &mut next_offset,
-                false,
-                NewBlockData::Data(folder_data(name, 0, false)?),
-            )?;
-            let folder_hierarchy = NodeId::new(NodeIdType::HierarchyTable, folder.index())?;
-            let folder_hierarchy_bid = match hierarchy_template {
-                Some(template) => template,
-                None => push_block(
-                    &mut blocks,
-                    &mut next_bid,
-                    &mut next_offset,
-                    false,
-                    NewBlockData::Data(table_context_data(&[])?),
-                )?,
-            };
-            let folder_contents = NodeId::new(NodeIdType::ContentsTable, folder.index())?;
-            let folder_contents_bid = match contents_template {
-                Some(template) => template,
-                None => push_block(
-                    &mut blocks,
-                    &mut next_bid,
-                    &mut next_offset,
-                    false,
-                    NewBlockData::Data(table_context_data(&[])?),
-                )?,
-            };
-            let folder_associated_contents =
-                NodeId::new(NodeIdType::AssociatedContentsTable, folder.index())?;
-            let folder_associated_contents_bid = match associated_contents_template {
-                Some(template) => template,
-                None => push_block(
-                    &mut blocks,
-                    &mut next_bid,
-                    &mut next_offset,
-                    false,
-                    NewBlockData::Data(table_context_data(&[])?),
-                )?,
-            };
-
-            // The grandparent's row of the parent gains PidTagSubfolders, patched through the row index.
-            let mut grandparent_roots = None;
-            if let Some((grandparent, node, entry, subnodes)) = parent_row_hierarchy {
-                let has_subfolders_cell = [(0x360A, PropertyValue::Boolean(true))];
-                let view = if hierarchy_path_edits() {
-                    open_table_view(&mut file, &tx, entry.data(), |rows| {
-                        subnodes
-                            .iter()
-                            .find(|entry| entry.node() == rows)
-                            .map(|entry| entry.block())
-                    })?
-                } else {
-                    None
-                };
-                let patched = match view {
-                    Some(view) => patch_table_row_by_index(
-                        &mut file,
+                            .map(|column| {
+                                new_folder_table_cell(
+                                    column,
+                                    store_record_key,
+                                    folder,
+                                    name,
+                                    false,
+                                    header.unique_value(),
+                                )
+                            })
+                            .collect::<io::Result<Vec<_>>>()?,
+                    )];
+                    appended = append_rows_to_state(
+                        file,
                         &mut tx,
-                        entry.data(),
-                        view,
-                        parent,
-                        &has_subfolders_cell,
+                        state,
+                        Some(view),
+                        &mut rows,
                         header.unique_value(),
                         &mut blocks,
                         &mut next_bid,
                         &mut next_offset,
-                    )?,
-                    None => None,
-                };
-                let patched = match patched {
-                    Some(patched) => patched,
-                    None => {
-                        crate::session::count_hierarchy_fallback();
-                        let table = store
-                            .open_folder(&store.properties().make_entry_id(grandparent)?)?
-                            .hierarchy_table()
-                            .cloned()
-                            .ok_or_else(|| {
-                                io::Error::new(
-                                    io::ErrorKind::NotFound,
-                                    "parent hierarchy table not found",
-                                )
-                            })?;
-                        rebuild_hierarchy_row(
-                            &mut blocks,
-                            &mut next_bid,
-                            &mut next_offset,
-                            table.as_ref(),
-                            &subnodes,
-                            parent,
-                            &has_subfolders_cell,
-                            header.unique_value(),
-                        )?
-                    }
-                };
-                let entry = hierarchy_entry_after(
-                    &mut blocks,
-                    &mut next_bid,
-                    &mut next_offset,
-                    node,
-                    entry,
-                    subnodes,
-                    patched,
-                )?;
-                grandparent_roots =
-                    Some((grandparent, entry.data(), patched.1.map(|(_, rows)| rows)));
-                tx.put_node(entry);
+                    )?
+                    .map(|(heap, rows, _)| (heap, rows_node, rows));
+                }
+                if appended.is_none() {
+                    crate::session::count_hierarchy_fallback();
+                }
             }
-            for entry in [
-                UnicodeNodeBTreeEntry::new(
-                    parent,
-                    parent_data,
-                    parent_subnode,
-                    parent_entry.parent(),
-                ),
-                UnicodeNodeBTreeEntry::new(
-                    hierarchy,
-                    hierarchy_data_bid,
-                    hierarchy_subnode_bid,
-                    hierarchy_entry.and_then(|entry| entry.parent()),
-                ),
-                UnicodeNodeBTreeEntry::new(folder, folder_data_bid, None, Some(parent)),
-                UnicodeNodeBTreeEntry::new(folder_hierarchy, folder_hierarchy_bid, None, None),
-                UnicodeNodeBTreeEntry::new(folder_contents, folder_contents_bid, None, None),
-                UnicodeNodeBTreeEntry::new(
-                    folder_associated_contents,
-                    folder_associated_contents_bid,
-                    None,
-                    None,
-                ),
-            ] {
-                tx.put_node(entry);
-            }
-
-            append_search_updates(
-                &mut file,
-                &store,
-                &mut tx,
+            let (data, rows_node, rows) = match appended {
+                Some(appended) => {
+                    new_hierarchy_state = state;
+                    appended
+                }
+                None => {
+                    let table = read_table()?;
+                    let rows_node = table_rows_node(table.context(), &hierarchy_subnodes)?;
+                    let (pages, rows, row_ids) = rebuild_hierarchy_table(
+                        table.as_ref(),
+                        store_record_key,
+                        folder,
+                        name,
+                        false,
+                        rows_node,
+                        header.unique_value(),
+                    )?;
+                    let data =
+                        push_data_tree_chunks(&mut blocks, &mut next_bid, &mut next_offset, pages)?;
+                    let rows =
+                        push_data_tree_chunks(&mut blocks, &mut next_bid, &mut next_offset, rows)?;
+                    new_hierarchy_state = Some(ContentsState {
+                        row_count: row_ids.len(),
+                        last_id: row_ids.iter().map(|id| u32::from(*id)).max(),
+                        unread: 0,
+                        heap_root: data,
+                        rows_root: rows,
+                    });
+                    (data, rows_node, rows)
+                }
+            };
+            hierarchy_subnodes.retain(|entry| entry.node() != rows_node);
+            hierarchy_subnodes.push(UnicodeLeafSubNodeTreeEntry::new(rows_node, rows, None));
+            let subnodes = push_subnode_tree(
                 &mut blocks,
                 &mut next_bid,
                 &mut next_offset,
-                [
-                    SearchUpdateData::FolderAdded {
-                        parent,
-                        folder,
-                        reserved1: 0,
-                        reserved2: 0,
-                    },
-                    SearchUpdateData::FolderModified {
-                        folder: parent,
-                        reserved: 0,
-                    },
-                ],
+                hierarchy_subnodes,
             )?;
+            (data, Some(subnodes))
+        } else {
+            let data = push_block(
+                &mut blocks,
+                &mut next_bid,
+                &mut next_offset,
+                false,
+                NewBlockData::Data(table_context_data(&[folder])?),
+            )?;
+            (data, None)
+        };
 
-            Ok((
-                CommitPlan {
-                    header,
-                    changes: tx.changes,
-                    blocks,
-                    next_bid,
-                    next_offset,
-                    reserved_nodes: vec![
-                        folder,
-                        folder_hierarchy,
-                        folder_contents,
-                        folder_associated_contents,
-                    ],
+        let (parent_data, parent_subnode) = if parent_has_subfolders {
+            (parent_entry.data(), parent_entry.sub_node())
+        } else {
+            let next_property_subnode = parent_subnodes
+                .iter()
+                .filter(|entry| {
+                    matches!(
+                        entry.node().id_type(),
+                        Ok(NodeIdType::Internal | NodeIdType::ListsTablesProperties)
+                    )
+                })
+                .map(|entry| entry.node().index())
+                .max()
+                .unwrap_or(0)
+                .checked_add(1)
+                .ok_or(PstError::IntegerConversion)?;
+            let (parent_pages, external_properties) =
+                property_context_pages(parent_properties, next_property_subnode)?;
+            let parent_data =
+                push_data_tree_chunks(&mut blocks, &mut next_bid, &mut next_offset, parent_pages)?;
+            for (node, data) in external_properties {
+                let data = push_data_tree(&mut blocks, &mut next_bid, &mut next_offset, &data)?;
+                parent_subnodes.push(UnicodeLeafSubNodeTreeEntry::new(node, data, None));
+            }
+            let parent_subnode = if parent_subnodes.is_empty() {
+                None
+            } else {
+                Some(push_subnode_tree(
+                    &mut blocks,
+                    &mut next_bid,
+                    &mut next_offset,
+                    parent_subnodes,
+                )?)
+            };
+            (parent_data, parent_subnode)
+        };
+
+        let folder_data_bid = push_block(
+            &mut blocks,
+            &mut next_bid,
+            &mut next_offset,
+            false,
+            NewBlockData::Data(folder_data(name, 0, false)?),
+        )?;
+        let folder_hierarchy = NodeId::new(NodeIdType::HierarchyTable, folder.index())?;
+        let folder_hierarchy_bid = match hierarchy_template {
+            Some(template) => template,
+            None => push_block(
+                &mut blocks,
+                &mut next_bid,
+                &mut next_offset,
+                false,
+                NewBlockData::Data(table_context_data(&[])?),
+            )?,
+        };
+        let folder_contents = NodeId::new(NodeIdType::ContentsTable, folder.index())?;
+        let folder_contents_bid = match contents_template {
+            Some(template) => template,
+            None => push_block(
+                &mut blocks,
+                &mut next_bid,
+                &mut next_offset,
+                false,
+                NewBlockData::Data(table_context_data(&[])?),
+            )?,
+        };
+        let folder_associated_contents =
+            NodeId::new(NodeIdType::AssociatedContentsTable, folder.index())?;
+        let folder_associated_contents_bid = match associated_contents_template {
+            Some(template) => template,
+            None => push_block(
+                &mut blocks,
+                &mut next_bid,
+                &mut next_offset,
+                false,
+                NewBlockData::Data(table_context_data(&[])?),
+            )?,
+        };
+
+        // The grandparent's row of the parent gains PidTagSubfolders, patched through the row index.
+        let mut grandparent_roots = None;
+        if let Some((grandparent, node, entry, subnodes)) = parent_row_hierarchy {
+            let has_subfolders_cell = [(0x360A, PropertyValue::Boolean(true))];
+            let view = if hierarchy_path_edits() {
+                open_table_view(file, &tx, entry.data(), |rows| {
+                    subnodes
+                        .iter()
+                        .find(|entry| entry.node() == rows)
+                        .map(|entry| entry.block())
+                })?
+            } else {
+                None
+            };
+            let patched = match view {
+                Some(view) => patch_table_row_by_index(
+                    file,
+                    &mut tx,
+                    entry.data(),
+                    view,
+                    parent,
+                    &has_subfolders_cell,
+                    header.unique_value(),
+                    &mut blocks,
+                    &mut next_bid,
+                    &mut next_offset,
+                )?,
+                None => None,
+            };
+            let patched = match patched {
+                Some(patched) => patched,
+                None => {
+                    crate::session::count_hierarchy_fallback();
+                    let table = store
+                        .open_folder(&store.properties().make_entry_id(grandparent)?)?
+                        .hierarchy_table()
+                        .cloned()
+                        .ok_or_else(|| {
+                            io::Error::new(
+                                io::ErrorKind::NotFound,
+                                "parent hierarchy table not found",
+                            )
+                        })?;
+                    rebuild_hierarchy_row(
+                        &mut blocks,
+                        &mut next_bid,
+                        &mut next_offset,
+                        table.as_ref(),
+                        &subnodes,
+                        parent,
+                        &has_subfolders_cell,
+                        header.unique_value(),
+                    )?
+                }
+            };
+            let entry = hierarchy_entry_after(
+                &mut blocks,
+                &mut next_bid,
+                &mut next_offset,
+                node,
+                entry,
+                subnodes,
+                patched,
+            )?;
+            grandparent_roots = Some((grandparent, entry.data(), patched.1.map(|(_, rows)| rows)));
+            tx.put_node(entry);
+        }
+        for entry in [
+            UnicodeNodeBTreeEntry::new(parent, parent_data, parent_subnode, parent_entry.parent()),
+            UnicodeNodeBTreeEntry::new(
+                hierarchy,
+                hierarchy_data_bid,
+                hierarchy_subnode_bid,
+                hierarchy_entry.and_then(|entry| entry.parent()),
+            ),
+            UnicodeNodeBTreeEntry::new(folder, folder_data_bid, None, Some(parent)),
+            UnicodeNodeBTreeEntry::new(folder_hierarchy, folder_hierarchy_bid, None, None),
+            UnicodeNodeBTreeEntry::new(folder_contents, folder_contents_bid, None, None),
+            UnicodeNodeBTreeEntry::new(
+                folder_associated_contents,
+                folder_associated_contents_bid,
+                None,
+                None,
+            ),
+        ] {
+            tx.put_node(entry);
+        }
+
+        append_search_updates(
+            file,
+            &store,
+            &mut tx,
+            &mut blocks,
+            &mut next_bid,
+            &mut next_offset,
+            [
+                SearchUpdateData::FolderAdded {
+                    parent,
+                    folder,
+                    reserved1: 0,
+                    reserved2: 0,
                 },
-                (folder, new_hierarchy_state, grandparent_roots),
-            ))
-        })?;
+                SearchUpdateData::FolderModified {
+                    folder: parent,
+                    reserved: 0,
+                },
+            ],
+        )?;
+
+        Ok((
+            CommitPlan {
+                header,
+                changes: tx.changes,
+                blocks,
+                next_bid,
+                next_offset,
+                reserved_nodes: vec![
+                    folder,
+                    folder_hierarchy,
+                    folder_contents,
+                    folder_associated_contents,
+                ],
+            },
+            (folder, new_hierarchy_state, grandparent_roots),
+        ))
+    })?;
     if let Some(state) = hierarchy_state {
         core.hierarchy.insert(u32::from(parent), state);
     }
@@ -7404,9 +7377,10 @@ fn ensure_unicode_folder_path(core: &mut WriterCore, folder_path: &[&str]) -> io
     for name in folder_path {
         // A parent's children are read once per session (each child opened once), then kept by name, so a lookup does
         // not open every sibling.
-        if !core.children.contains_key(&u32::from(parent)) {
+        if let std::collections::hash_map::Entry::Vacant(e) = core.children.entry(u32::from(parent))
+        {
             let names = child_folder_names(&store, parent)?;
-            core.children.insert(u32::from(parent), names);
+            e.insert(names);
         }
         if let Some(folder) = core.children[&u32::from(parent)].get(*name) {
             parent = *folder;
@@ -7455,7 +7429,7 @@ fn append_unicode_pst(
     // The session's copy of the store's name-to-ID map. It is taken out for the commit and put back, with this commit's
     // additions, only once the commit succeeded; after a failure the next commit reads the map from the file.
     let names_cached = core.names.take();
-    let (folder, contents_state, keywords_resolved, hierarchy_roots, names_resolved) = core.run(move |mut file, state, store| {
+    let (folder, contents_state, keywords_resolved, hierarchy_roots, names_resolved) = core.run(move |file, state, store| {
     let mut header = state.header.clone();
     let old_root = header.root().clone();
     let mut tx = Tx::new(state);
@@ -7482,7 +7456,7 @@ fn append_unicode_pst(
     // With a session state, the append view reads the table's context and the pages it needs from disk; a table whose
     // layout the view does not take is read in full.
     let mut contents_view = match &cached {
-        Some(state) => open_contents_append(&mut file, &tx, state)?,
+        Some(state) => open_contents_append(file, &tx, state)?,
         None => None,
     };
     if contents_view.is_none() {
@@ -7603,9 +7577,9 @@ fn append_unicode_pst(
                     io::Error::new(io::ErrorKind::NotFound, "parent hierarchy node not found")
                 })?;
             let subnodes =
-                collect_subnode_entries(&mut file, *old_root.block_btree(), entry.sub_node())?;
+                collect_subnode_entries(file, *old_root.block_btree(), entry.sub_node())?;
             let view = if hierarchy_path_edits() {
-                open_table_view(&mut file, &tx, entry.data(), |rows| {
+                open_table_view(file, &tx, entry.data(), |rows| {
                     subnodes.iter().find(|entry| entry.node() == rows).map(|entry| entry.block())
                 })?
             } else {
@@ -7660,9 +7634,9 @@ fn append_unicode_pst(
         _ => recounted_unread,
     };
     let mut folder_subnodes =
-        collect_subnode_entries(&mut file, *old_root.block_btree(), folder_entry.sub_node())?;
+        collect_subnode_entries(file, *old_root.block_btree(), folder_entry.sub_node())?;
     let mut contents_subnodes = collect_subnode_entries(
-        &mut file,
+        file,
         *old_root.block_btree(),
         contents_entry.sub_node(),
     )?;
@@ -7684,11 +7658,11 @@ fn append_unicode_pst(
             let built = build_message(&input.message, input.attachments, header.unique_value(), &names)?;
             message_sizes.push(built.size);
             // Attachment data blocks go to the file while they are produced.
-            let mut flush = |pending: &mut Vec<NewBlock>, space: &mut FileSpace| write_pending_blocks(&mut file, &mut block_writer, &mut tx, pending, space);
+            let mut flush = |pending: &mut Vec<NewBlock>, space: &mut FileSpace| write_pending_blocks(file, &mut block_writer, &mut tx, pending, space);
             let (message_bid, message_subnode_bid, values) =
                 push_message(&mut blocks, &mut next_bid, &mut next_offset, built, input.attachments, &mut flush)?;
             message_values.push(values);
-            write_pending_blocks(&mut file, &mut block_writer, &mut tx, &mut blocks, &mut next_offset)?;
+            write_pending_blocks(file, &mut block_writer, &mut tx, &mut blocks, &mut next_offset)?;
             Ok::<_, io::Error>(UnicodeNodeBTreeEntry::new(
                 *message,
                 message_bid,
@@ -7714,7 +7688,7 @@ fn append_unicode_pst(
     }
 
     // Cell subnodes are NID_TYPE_LTP and the row matrix is internal, so the next index counts every type.
-    block_writer.flush(&mut file)?;
+    block_writer.flush(file)?;
 
     let next_contents_subnode = contents_subnodes
         .iter()
@@ -7761,7 +7735,7 @@ fn append_unicode_pst(
         };
         if let Some(mut state) = state {
             if let Some((heap, rows, count)) = append_rows_to_state(
-                &mut file,
+                file,
                 &mut tx,
                 &mut state,
                 view,
@@ -7864,7 +7838,7 @@ fn append_unicode_pst(
     if let Some((parent, node, entry, subnodes, view)) = parent_hierarchy {
         let patched = match view {
             Some(view) => patch_table_row_by_index(
-                &mut file,
+                file,
                 &mut tx,
                 entry.data(),
                 view,
@@ -7914,7 +7888,7 @@ fn append_unicode_pst(
     }
 
     append_search_updates(
-        &mut file,
+        file,
         &store,
         &mut tx,
         &mut blocks,
@@ -11982,6 +11956,7 @@ mod create_tests {
     }
 
     /// The map's streams, decoded here from MS-PST 2.4.7 (not with the crate's reader's hash lookup).
+    #[allow(clippy::type_complexity)]
     fn decoded_map(
         store: &Rc<UnicodeStore>,
     ) -> (
@@ -12362,7 +12337,7 @@ mod create_tests {
         let names = (0..4200)
             .map(|index| format!("Name {index:04}"))
             .collect::<Vec<_>>();
-        let values = (0..4200).map(|index| index as i32).collect::<Vec<_>>();
+        let values = (0..4200).collect::<Vec<_>>();
         let named = names
             .iter()
             .zip(&values)
@@ -12932,6 +12907,7 @@ mod create_tests {
             id,
             value: UnicodePstValue::Integer32(1),
         };
+        #[allow(clippy::type_complexity)]
         let cases: Vec<(
             &str,
             Vec<UnicodePstProperty<'static>>,
@@ -13116,10 +13092,7 @@ mod create_tests {
             };
             let subject = subject.to_string();
             let mut depth = 0;
-            loop {
-                let Some(table) = message.attachment_table() else {
-                    break;
-                };
+            while let Some(table) = message.attachment_table() {
                 let rows = table.rows_matrix().collect::<Vec<_>>();
                 assert!(
                     matches!(

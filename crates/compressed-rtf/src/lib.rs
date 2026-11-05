@@ -211,7 +211,7 @@ mod tests {
     /// [Example 1: Simple Compressed RTF](https://learn.microsoft.com/en-us/openspecs/exchange_server_protocols/ms-oxrtfcp/029bff74-8c00-402e-ac2b-0210a5f57371)
     #[test]
     fn test_decompress_simple_rtf() {
-        let rtf = decompress_rtf(&COMPRESSED_SIMPLE_RTF).unwrap();
+        let rtf = decompress_rtf(COMPRESSED_SIMPLE_RTF).unwrap();
         assert_eq!(rtf, UNCOMPRESSED_SIMPLE_RTF);
     }
 
@@ -232,7 +232,7 @@ mod tests {
     /// [Example 2: Reading a Token from the Dictionary that Crosses WritePosition](https://learn.microsoft.com/en-us/openspecs/exchange_server_protocols/ms-oxrtfcp/421a2da5-7752-4985-8981-0f19f1e5b687)
     #[test]
     fn test_decompress_crossing_write_rtf() {
-        let rtf = decompress_rtf(&COMPRESSED_CROSSING_WRITE_RTF).unwrap();
+        let rtf = decompress_rtf(COMPRESSED_CROSSING_WRITE_RTF).unwrap();
         assert_eq!(rtf, UNCOMPRESSED_CROSSING_WRITE_RTF);
     }
 

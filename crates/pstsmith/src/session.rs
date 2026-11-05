@@ -156,6 +156,7 @@ fn child_for(children: &[(u64, UnicodePageRef)], key: u64) -> usize {
 pub(crate) struct DiskTree<E> {
     pub(crate) root: UnicodePageRef,
     reader: RefCell<File>,
+    #[allow(clippy::type_complexity)]
     cache: RefCell<(HashMap<u64, Rc<TreePage<E>>>, VecDeque<u64>)>,
 }
 
@@ -1253,7 +1254,7 @@ fn add_free_slot(runs: &mut Vec<(u64, u64)>, tail: &mut Option<(u64, u64)>, at: 
 fn constant_map_pages(index: usize) -> io::Result<impl Iterator<Item = (u64, [u8; PAGE_SIZE])>> {
     let index = index as u64;
     let mut pages = [None, None, None];
-    if index % PMAP_PAGE_COUNT == 0 {
+    if index.is_multiple_of(PMAP_PAGE_COUNT) {
         let offset = (index / PMAP_PAGE_COUNT) * PMAP_DATA_SIZE + PMAP_FIRST_OFFSET;
         pages[0] = Some((
             offset,
@@ -1264,7 +1265,7 @@ fn constant_map_pages(index: usize) -> io::Result<impl Iterator<Item = (u64, [u8
             )?,
         ));
     }
-    if index >= FMAP_FIRST_SIZE && (index - FMAP_FIRST_SIZE) % FMAP_PAGE_COUNT == 0 {
+    if index >= FMAP_FIRST_SIZE && (index - FMAP_FIRST_SIZE).is_multiple_of(FMAP_PAGE_COUNT) {
         let offset =
             ((index - FMAP_FIRST_SIZE) / FMAP_PAGE_COUNT) * FMAP_DATA_SIZE + FMAP_FIRST_OFFSET;
         pages[1] = Some((
@@ -1276,7 +1277,7 @@ fn constant_map_pages(index: usize) -> io::Result<impl Iterator<Item = (u64, [u8
             )?,
         ));
     }
-    if index >= FPMAP_FIRST_SIZE && (index - FPMAP_FIRST_SIZE) % FPMAP_PAGE_COUNT == 0 {
+    if index >= FPMAP_FIRST_SIZE && (index - FPMAP_FIRST_SIZE).is_multiple_of(FPMAP_PAGE_COUNT) {
         let offset =
             ((index - FPMAP_FIRST_SIZE) / FPMAP_PAGE_COUNT) * FPMAP_DATA_SIZE + FPMAP_FIRST_OFFSET;
         pages[2] = Some((
@@ -2856,6 +2857,317 @@ impl UnicodePstWriter {
     }
 }
 
+/// The logical content of every node of a Unicode PST: (NID, parent NID, data stream, subnode streams by NID path).
+/// Diagnostics for equivalence checks between writer versions whose block layout differs; not part of the writer API.
+#[doc(hidden)]
+#[allow(clippy::type_complexity)]
+pub fn debug_node_streams(
+    path: impl AsRef<Path>,
+) -> io::Result<Vec<(u32, u32, Vec<u8>, Vec<(Vec<u32>, Vec<u8>)>)>> {
+    let mut file = File::open(path.as_ref())?;
+    let state = CommittedState::read_any(&mut file, None)?;
+    let tx = Tx::new(&state);
+    let bbt_root = *state.header.root().block_btree();
+    let stream = |file: &mut File, block: UnicodeBlockId| -> io::Result<Vec<u8>> {
+        if block.search_key() == 0 {
+            return Ok(Vec::new());
+        }
+        let mut data = Vec::new();
+        for (leaf, _) in data_tree_leaves(file, &tx, block)? {
+            data.extend(read_data_block(file, &tx, leaf)?);
+        }
+        Ok(data)
+    };
+    let mut nodes = Vec::new();
+    for entry in state.nbt.entries()?.iter() {
+        let data = stream(&mut file, entry.data())?;
+        let mut subnodes = Vec::new();
+        let mut pending = vec![(Vec::new(), entry.sub_node())];
+        while let Some((prefix, sub_node)) = pending.pop() {
+            for sub in collect_subnode_entries(&mut file, bbt_root, sub_node)? {
+                let mut path = prefix.clone();
+                path.push(u32::from(sub.node()));
+                subnodes.push((path.clone(), stream(&mut file, sub.block())?));
+                if sub.sub_node().is_some() {
+                    pending.push((path, sub.sub_node()));
+                }
+            }
+        }
+        subnodes.sort();
+        nodes.push((
+            u32::from(entry.node()),
+            entry.parent().map(u32::from).unwrap_or(0),
+            data,
+            subnodes,
+        ));
+    }
+    Ok(nodes)
+}
+
+/// Heap fill levels: for every node data stream and every subnode stream that is a heap-on-node (its first page starts
+/// with an HNHDR, signature 0xEC), the fill-level bytes it stores: page 0's `rgbFillLevel` (4 bytes), then the
+/// `rgbFillLevel` of every HNBITMAPHDR page (pages 8, 136, ...; 64 bytes each). Returns `(node, subnode path, pages,
+/// fill-level bytes)`, sorted. Leaves are decoded with the file's own encoding. Measurement and test use only.
+#[allow(clippy::type_complexity)]
+pub fn debug_heap_fill_levels(
+    path: impl AsRef<Path>,
+) -> io::Result<Vec<(u32, Vec<u32>, usize, Vec<u8>)>> {
+    let mut file = File::open(path.as_ref())?;
+    let state = CommittedState::read_any(&mut file, None)?;
+    let tx = Tx::new(&state);
+    let crypt = state.header.crypt_method();
+    let bbt_root = *state.header.root().block_btree();
+    let pages = |file: &mut File, block: UnicodeBlockId| -> io::Result<Vec<Vec<u8>>> {
+        let mut pages = Vec::new();
+        if block.search_key() == 0 {
+            return Ok(pages);
+        }
+        for (leaf, _) in data_tree_leaves(file, &tx, block)? {
+            let entry = bbt_entry(&tx, leaf)?;
+            match UnicodeDataTree::read(file, crypt, &entry)? {
+                DataTree::Leaf(leaf) => pages.push(leaf.data().to_vec()),
+                DataTree::Intermediate(_) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "expected a leaf data block",
+                    ))
+                }
+            }
+        }
+        Ok(pages)
+    };
+    let fill = |pages: &[Vec<u8>]| -> Option<Vec<u8>> {
+        let first = pages.first()?;
+        if first.len() < 12 || first[2] != 0xEC {
+            return None;
+        }
+        let mut levels = first[8..12].to_vec();
+        for (index, page) in pages.iter().enumerate() {
+            if index % 128 == 8 {
+                levels.extend_from_slice(page.get(2..66)?);
+            }
+        }
+        Some(levels)
+    };
+    let mut heaps = Vec::new();
+    for entry in state.nbt.entries()?.iter() {
+        let node = u32::from(entry.node());
+        let data = pages(&mut file, entry.data())?;
+        if let Some(levels) = fill(&data) {
+            heaps.push((node, Vec::new(), data.len(), levels));
+        }
+        let mut pending = vec![(Vec::new(), entry.sub_node())];
+        while let Some((prefix, sub_node)) = pending.pop() {
+            for sub in collect_subnode_entries(&mut file, bbt_root, sub_node)? {
+                let mut path = prefix.clone();
+                path.push(u32::from(sub.node()));
+                let sub_pages = pages(&mut file, sub.block())?;
+                if let Some(levels) = fill(&sub_pages) {
+                    heaps.push((node, path.clone(), sub_pages.len(), levels));
+                }
+                if sub.sub_node().is_some() {
+                    pending.push((path, sub.sub_node()));
+                }
+            }
+        }
+    }
+    heaps.sort();
+    Ok(heaps)
+}
+
+/// Reference check: every block's stored reference count against the references the file holds, by the rule
+/// `compact_unicode_block_tree` applies (count = 1 + references; references are the NBT data and subnode roots and the
+/// children of data-tree and subnode-tree blocks, an internal block's children counted once). Returns the number of
+/// blocks, the mismatches `(key, stored, expected)`, the unreferenced block keys and the referenced keys that have no
+/// block. Measurement and test use only.
+#[doc(hidden)]
+#[allow(clippy::type_complexity)]
+pub fn debug_block_references(
+    path: impl AsRef<Path>,
+) -> io::Result<(usize, Vec<(u64, u16, u32)>, Vec<u64>, Vec<u64>)> {
+    let mut file = File::open(path.as_ref())?;
+    let state = CommittedState::read_any(&mut file, None)?;
+    let mut references: BTreeMap<u64, u32> = BTreeMap::new();
+    let mut pending: Vec<UnicodeBlockId> = Vec::new();
+    let note = |block: UnicodeBlockId,
+                references: &mut BTreeMap<u64, u32>,
+                pending: &mut Vec<UnicodeBlockId>| {
+        let key = block.search_key();
+        if key == 0 {
+            return;
+        }
+        let count = references.entry(key).or_default();
+        if *count == 0 {
+            pending.push(block);
+        }
+        *count += 1;
+    };
+    for entry in state.nbt.entries()?.iter() {
+        note(entry.data(), &mut references, &mut pending);
+        if let Some(sub) = entry.sub_node() {
+            note(sub, &mut references, &mut pending);
+        }
+    }
+    let mut missing = Vec::new();
+    while let Some(block) = pending.pop() {
+        let Some(entry) = state.bbt.get(block.search_key())? else {
+            missing.push(block.search_key());
+            continue;
+        };
+        if block.is_internal() {
+            for child in internal_block_children(&mut file, &entry)? {
+                note(child, &mut references, &mut pending);
+            }
+        }
+    }
+    let mut mismatches = Vec::new();
+    let mut unreferenced = Vec::new();
+    let mut blocks = 0;
+    for entry in state.bbt.entries()?.iter() {
+        blocks += 1;
+        match references.get(&entry.key()) {
+            Some(count) if u32::from(entry.ref_count()) == count + 1 => {}
+            Some(count) => mismatches.push((entry.key(), entry.ref_count(), count + 1)),
+            None => unreferenced.push(entry.key()),
+        }
+    }
+    missing.sort_unstable();
+    Ok((blocks, mismatches, unreferenced, missing))
+}
+
+/// Allocation map check of a Unicode PST (`pst-ref-check`): every AMap page compared, bit by bit, with the bits the
+/// B-trees give (their pages, every block, and the map pages themselves), read only. Returns the number of AMap pages,
+/// the pages that differ, the 64-byte units the map marks allocated that nothing references (leaked: wasted space, not
+/// a corruption) and the units something references that the map marks free (a later allocation could overwrite them: a
+/// corruption), with up to 20 file offsets of the latter; then the header's free size and the free bytes the map pages
+/// on disk give.
+#[allow(clippy::type_complexity)]
+pub fn debug_allocation_map(
+    path: impl AsRef<Path>,
+) -> io::Result<(usize, usize, u64, u64, Vec<u64>, u64, u64)> {
+    let mut file = File::open(path.as_ref())?;
+    let header = UnicodeHeader::read(&mut file)?;
+    let root = header.root();
+    let count = amap_page_count(root.file_eof_index().index()) as usize;
+    let (mut differing, mut leaked, mut unmarked, mut sample, mut free) =
+        (0, 0_u64, 0_u64, Vec::new(), 0_u64);
+    let mut window = 0;
+    while window < count {
+        let end = (window + AMAP_CHECK_WINDOW).min(count);
+        let mut expected: Vec<MapBits> = (window..end).map(reserved_bits).collect();
+        btree_allocations(
+            &mut file,
+            *root.node_btree(),
+            *root.block_btree(),
+            &mut |offset, size| {
+                let (first, last) = (amap_index_of(offset), amap_index_of(offset + size - 1));
+                for index in first.max(window)..=last.min(end - 1) {
+                    mark_range(
+                        &mut expected[index - window],
+                        index,
+                        offset,
+                        offset + size,
+                        true,
+                    );
+                }
+            },
+        )?;
+        for index in window..end {
+            let bits = read_amap_bits(&mut file, index)?;
+            free += free_bytes_of(&bits);
+            let want = expected[index - window];
+            if bits != want {
+                differing += 1;
+            }
+            for byte in 0..bits.len() {
+                leaked += u64::from((bits[byte] & !want[byte]).count_ones());
+                let missing = want[byte] & !bits[byte];
+                unmarked += u64::from(missing.count_ones());
+                for bit in 0..8 {
+                    if missing & (0x80 >> bit) != 0 && sample.len() < 20 {
+                        sample.push(amap_page_base(index) + (byte as u64 * 8 + bit) * 64);
+                    }
+                }
+            }
+        }
+        window = end;
+    }
+    Ok((
+        count,
+        differing,
+        leaked,
+        unmarked,
+        sample,
+        root.amap_free_size().index(),
+        free,
+    ))
+}
+
+impl WriterCore {
+    /// Measurement only: the session's retained structures as a JSON object, counts and bytes from sizes and
+    /// capacities; `null` without the `mem-profile` feature.
+    #[allow(dead_code)]
+    fn structure_report(&self) -> String {
+        #[cfg(not(feature = "mem-profile"))]
+        return String::from("null");
+        #[cfg(feature = "mem-profile")]
+        {
+            use std::mem::size_of;
+            fn tree<E>(tree: &DiskTree<E>) -> String {
+                // The bounded page cache is all a tree keeps: decoded pages and their entries.
+                let cache = tree.cache.borrow();
+                let entries: usize = cache
+                    .0
+                    .values()
+                    .map(|page| match &**page {
+                        TreePage::Leaf(items) => items.len(),
+                        TreePage::Inner(_, children) => children.len(),
+                    })
+                    .sum();
+                let bytes: usize = cache.0.values().map(|page| match &**page {
+                    TreePage::Leaf(items) => items.capacity() * size_of::<E>(),
+                    TreePage::Inner(_, children) => children.capacity() * size_of::<(u64, UnicodePageRef)>(),
+                } + size_of::<TreePage<E>>() + 2 * size_of::<usize>() + 16).sum::<usize>() + cache.1.capacity() * size_of::<u64>();
+                format!(
+                    "{{\"cached_pages\":{},\"cached_entries\":{entries},\"cache_bytes\":{bytes}}}",
+                    cache.0.len()
+                )
+            }
+            let Some(state) = self.state.as_ref() else {
+                return String::from("null");
+            };
+            let amap = &state.amap;
+            let runs_bytes = amap.free_runs.capacity() * 16;
+            let cache_bytes = amap.cache.capacity() * size_of::<(usize, MapBits)>();
+            format!(
+                "{{\"bbt\":{},\"nbt\":{},\"amap\":{{\"free_runs\":{},\"runs_bytes\":{runs_bytes},\"cached_pages\":{},\"cache_bytes\":{cache_bytes}}},\"folder_cache\":{}}}",
+                tree(&state.bbt), tree(&state.nbt), amap.free_runs.len(), amap.cache.len(), self.folders.len()
+            )
+        }
+    }
+
+    /// Measurement only: the contents-table append states the session keeps (`measurement::contents_after_commit`).
+    #[allow(dead_code)]
+    pub(crate) fn contents_report(&self) -> String {
+        #[cfg(not(feature = "mem-profile"))]
+        return String::from("null");
+        #[cfg(feature = "mem-profile")]
+        {
+            use std::mem::size_of;
+            // A state is a few integers per folder appended to; pages are read per commit and dropped after it.
+            let rows: usize = self.contents.values().map(|c| c.row_count).sum();
+            let state_bytes =
+                self.contents.capacity() * (size_of::<u32>() + size_of::<ContentsState>() + 1);
+            format!(
+                "{{\"folders\":{},\"rows\":{rows},\"state_bytes\":{state_bytes},\"folder_paths\":{},\"folder_path_bytes\":{}}}",
+                self.contents.len(),
+                self.folders.len(),
+                self.folders.iter().map(|(path, _)| path.iter().map(String::capacity).sum::<usize>() + path.capacity() * size_of::<String>() + size_of::<Vec<String>>() + size_of::<NodeId>()).sum::<usize>()
+            )
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3749,9 +4061,7 @@ mod tests {
                 } else {
                     lengths[next(lengths.len())]
                 };
-                std::iter::repeat(chars[next(chars.len())])
-                    .take(len)
-                    .collect()
+                std::iter::repeat_n(chars[next(chars.len())], len).collect()
             };
             let [subject, sender_name, sender_email, sender_type, body, id, html, headers] =
                 std::array::from_fn(|_| text(&mut next));
@@ -5655,312 +5965,5 @@ mod tests {
         writer.close().unwrap();
         assert_eq!(folder(&path, &["Inbox"]), (3, 2));
         std::fs::remove_file(path).unwrap();
-    }
-}
-
-/// The logical content of every node of a Unicode PST: (NID, parent NID, data stream, subnode streams by NID path).
-/// Diagnostics for equivalence checks between writer versions whose block layout differs; not part of the writer API.
-#[doc(hidden)]
-pub fn debug_node_streams(
-    path: impl AsRef<Path>,
-) -> io::Result<Vec<(u32, u32, Vec<u8>, Vec<(Vec<u32>, Vec<u8>)>)>> {
-    let mut file = File::open(path.as_ref())?;
-    let state = CommittedState::read_any(&mut file, None)?;
-    let tx = Tx::new(&state);
-    let bbt_root = *state.header.root().block_btree();
-    let stream = |file: &mut File, block: UnicodeBlockId| -> io::Result<Vec<u8>> {
-        if block.search_key() == 0 {
-            return Ok(Vec::new());
-        }
-        let mut data = Vec::new();
-        for (leaf, _) in data_tree_leaves(file, &tx, block)? {
-            data.extend(read_data_block(file, &tx, leaf)?);
-        }
-        Ok(data)
-    };
-    let mut nodes = Vec::new();
-    for entry in state.nbt.entries()?.iter() {
-        let data = stream(&mut file, entry.data())?;
-        let mut subnodes = Vec::new();
-        let mut pending = vec![(Vec::new(), entry.sub_node())];
-        while let Some((prefix, sub_node)) = pending.pop() {
-            for sub in collect_subnode_entries(&mut file, bbt_root, sub_node)? {
-                let mut path = prefix.clone();
-                path.push(u32::from(sub.node()));
-                subnodes.push((path.clone(), stream(&mut file, sub.block())?));
-                if sub.sub_node().is_some() {
-                    pending.push((path, sub.sub_node()));
-                }
-            }
-        }
-        subnodes.sort();
-        nodes.push((
-            u32::from(entry.node()),
-            entry.parent().map(u32::from).unwrap_or(0),
-            data,
-            subnodes,
-        ));
-    }
-    Ok(nodes)
-}
-
-/// Heap fill levels: for every node data stream and every subnode stream that is a heap-on-node (its first page starts
-/// with an HNHDR, signature 0xEC), the fill-level bytes it stores: page 0's `rgbFillLevel` (4 bytes), then the
-/// `rgbFillLevel` of every HNBITMAPHDR page (pages 8, 136, ...; 64 bytes each). Returns `(node, subnode path, pages,
-/// fill-level bytes)`, sorted. Leaves are decoded with the file's own encoding. Measurement and test use only.
-pub fn debug_heap_fill_levels(
-    path: impl AsRef<Path>,
-) -> io::Result<Vec<(u32, Vec<u32>, usize, Vec<u8>)>> {
-    let mut file = File::open(path.as_ref())?;
-    let state = CommittedState::read_any(&mut file, None)?;
-    let tx = Tx::new(&state);
-    let crypt = state.header.crypt_method();
-    let bbt_root = *state.header.root().block_btree();
-    let pages = |file: &mut File, block: UnicodeBlockId| -> io::Result<Vec<Vec<u8>>> {
-        let mut pages = Vec::new();
-        if block.search_key() == 0 {
-            return Ok(pages);
-        }
-        for (leaf, _) in data_tree_leaves(file, &tx, block)? {
-            let entry = bbt_entry(&tx, leaf)?;
-            match UnicodeDataTree::read(file, crypt, &entry)? {
-                DataTree::Leaf(leaf) => pages.push(leaf.data().to_vec()),
-                DataTree::Intermediate(_) => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "expected a leaf data block",
-                    ))
-                }
-            }
-        }
-        Ok(pages)
-    };
-    let fill = |pages: &[Vec<u8>]| -> Option<Vec<u8>> {
-        let first = pages.first()?;
-        if first.len() < 12 || first[2] != 0xEC {
-            return None;
-        }
-        let mut levels = first[8..12].to_vec();
-        for (index, page) in pages.iter().enumerate() {
-            if index % 128 == 8 {
-                levels.extend_from_slice(page.get(2..66)?);
-            }
-        }
-        Some(levels)
-    };
-    let mut heaps = Vec::new();
-    for entry in state.nbt.entries()?.iter() {
-        let node = u32::from(entry.node());
-        let data = pages(&mut file, entry.data())?;
-        if let Some(levels) = fill(&data) {
-            heaps.push((node, Vec::new(), data.len(), levels));
-        }
-        let mut pending = vec![(Vec::new(), entry.sub_node())];
-        while let Some((prefix, sub_node)) = pending.pop() {
-            for sub in collect_subnode_entries(&mut file, bbt_root, sub_node)? {
-                let mut path = prefix.clone();
-                path.push(u32::from(sub.node()));
-                let sub_pages = pages(&mut file, sub.block())?;
-                if let Some(levels) = fill(&sub_pages) {
-                    heaps.push((node, path.clone(), sub_pages.len(), levels));
-                }
-                if sub.sub_node().is_some() {
-                    pending.push((path, sub.sub_node()));
-                }
-            }
-        }
-    }
-    heaps.sort();
-    Ok(heaps)
-}
-
-/// Reference check: every block's stored reference count against the references the file holds, by the rule
-/// `compact_unicode_block_tree` applies (count = 1 + references; references are the NBT data and subnode roots and the
-/// children of data-tree and subnode-tree blocks, an internal block's children counted once). Returns the number of
-/// blocks, the mismatches `(key, stored, expected)`, the unreferenced block keys and the referenced keys that have no
-/// block. Measurement and test use only.
-#[doc(hidden)]
-pub fn debug_block_references(
-    path: impl AsRef<Path>,
-) -> io::Result<(usize, Vec<(u64, u16, u32)>, Vec<u64>, Vec<u64>)> {
-    let mut file = File::open(path.as_ref())?;
-    let state = CommittedState::read_any(&mut file, None)?;
-    let mut references: BTreeMap<u64, u32> = BTreeMap::new();
-    let mut pending: Vec<UnicodeBlockId> = Vec::new();
-    let note = |block: UnicodeBlockId,
-                references: &mut BTreeMap<u64, u32>,
-                pending: &mut Vec<UnicodeBlockId>| {
-        let key = block.search_key();
-        if key == 0 {
-            return;
-        }
-        let count = references.entry(key).or_default();
-        if *count == 0 {
-            pending.push(block);
-        }
-        *count += 1;
-    };
-    for entry in state.nbt.entries()?.iter() {
-        note(entry.data(), &mut references, &mut pending);
-        if let Some(sub) = entry.sub_node() {
-            note(sub, &mut references, &mut pending);
-        }
-    }
-    let mut missing = Vec::new();
-    while let Some(block) = pending.pop() {
-        let Some(entry) = state.bbt.get(block.search_key())? else {
-            missing.push(block.search_key());
-            continue;
-        };
-        if block.is_internal() {
-            for child in internal_block_children(&mut file, &entry)? {
-                note(child, &mut references, &mut pending);
-            }
-        }
-    }
-    let mut mismatches = Vec::new();
-    let mut unreferenced = Vec::new();
-    let mut blocks = 0;
-    for entry in state.bbt.entries()?.iter() {
-        blocks += 1;
-        match references.get(&entry.key()) {
-            Some(count) if u32::from(entry.ref_count()) == count + 1 => {}
-            Some(count) => mismatches.push((entry.key(), entry.ref_count(), count + 1)),
-            None => unreferenced.push(entry.key()),
-        }
-    }
-    missing.sort_unstable();
-    Ok((blocks, mismatches, unreferenced, missing))
-}
-
-/// Allocation map check of a Unicode PST (`pst-ref-check`): every AMap page compared, bit by bit, with the bits the
-/// B-trees give (their pages, every block, and the map pages themselves), read only. Returns the number of AMap pages,
-/// the pages that differ, the 64-byte units the map marks allocated that nothing references (leaked: wasted space, not
-/// a corruption) and the units something references that the map marks free (a later allocation could overwrite them: a
-/// corruption), with up to 20 file offsets of the latter; then the header's free size and the free bytes the map pages
-/// on disk give.
-pub fn debug_allocation_map(
-    path: impl AsRef<Path>,
-) -> io::Result<(usize, usize, u64, u64, Vec<u64>, u64, u64)> {
-    let mut file = File::open(path.as_ref())?;
-    let header = UnicodeHeader::read(&mut file)?;
-    let root = header.root();
-    let count = amap_page_count(root.file_eof_index().index()) as usize;
-    let (mut differing, mut leaked, mut unmarked, mut sample, mut free) =
-        (0, 0_u64, 0_u64, Vec::new(), 0_u64);
-    let mut window = 0;
-    while window < count {
-        let end = (window + AMAP_CHECK_WINDOW).min(count);
-        let mut expected: Vec<MapBits> = (window..end).map(reserved_bits).collect();
-        btree_allocations(
-            &mut file,
-            *root.node_btree(),
-            *root.block_btree(),
-            &mut |offset, size| {
-                let (first, last) = (amap_index_of(offset), amap_index_of(offset + size - 1));
-                for index in first.max(window)..=last.min(end - 1) {
-                    mark_range(
-                        &mut expected[index - window],
-                        index,
-                        offset,
-                        offset + size,
-                        true,
-                    );
-                }
-            },
-        )?;
-        for index in window..end {
-            let bits = read_amap_bits(&mut file, index)?;
-            free += free_bytes_of(&bits);
-            let want = expected[index - window];
-            if bits != want {
-                differing += 1;
-            }
-            for byte in 0..bits.len() {
-                leaked += u64::from((bits[byte] & !want[byte]).count_ones());
-                let missing = want[byte] & !bits[byte];
-                unmarked += u64::from(missing.count_ones());
-                for bit in 0..8 {
-                    if missing & (0x80 >> bit) != 0 && sample.len() < 20 {
-                        sample.push(amap_page_base(index) + (byte as u64 * 8 + bit) * 64);
-                    }
-                }
-            }
-        }
-        window = end;
-    }
-    Ok((
-        count,
-        differing,
-        leaked,
-        unmarked,
-        sample,
-        root.amap_free_size().index(),
-        free,
-    ))
-}
-
-impl WriterCore {
-    /// Measurement only: the session's retained structures as a JSON object, counts and bytes from sizes and
-    /// capacities; `null` without the `mem-profile` feature.
-    #[allow(dead_code)]
-    fn structure_report(&self) -> String {
-        #[cfg(not(feature = "mem-profile"))]
-        return String::from("null");
-        #[cfg(feature = "mem-profile")]
-        {
-            use std::mem::size_of;
-            fn tree<E>(tree: &DiskTree<E>) -> String {
-                // The bounded page cache is all a tree keeps: decoded pages and their entries.
-                let cache = tree.cache.borrow();
-                let entries: usize = cache
-                    .0
-                    .values()
-                    .map(|page| match &**page {
-                        TreePage::Leaf(items) => items.len(),
-                        TreePage::Inner(_, children) => children.len(),
-                    })
-                    .sum();
-                let bytes: usize = cache.0.values().map(|page| match &**page {
-                    TreePage::Leaf(items) => items.capacity() * size_of::<E>(),
-                    TreePage::Inner(_, children) => children.capacity() * size_of::<(u64, UnicodePageRef)>(),
-                } + size_of::<TreePage<E>>() + 2 * size_of::<usize>() + 16).sum::<usize>() + cache.1.capacity() * size_of::<u64>();
-                format!(
-                    "{{\"cached_pages\":{},\"cached_entries\":{entries},\"cache_bytes\":{bytes}}}",
-                    cache.0.len()
-                )
-            }
-            let Some(state) = self.state.as_ref() else {
-                return String::from("null");
-            };
-            let amap = &state.amap;
-            let runs_bytes = amap.free_runs.capacity() * 16;
-            let cache_bytes = amap.cache.capacity() * size_of::<(usize, MapBits)>();
-            format!(
-                "{{\"bbt\":{},\"nbt\":{},\"amap\":{{\"free_runs\":{},\"runs_bytes\":{runs_bytes},\"cached_pages\":{},\"cache_bytes\":{cache_bytes}}},\"folder_cache\":{}}}",
-                tree(&state.bbt), tree(&state.nbt), amap.free_runs.len(), amap.cache.len(), self.folders.len()
-            )
-        }
-    }
-
-    /// Measurement only: the contents-table append states the session keeps (`measurement::contents_after_commit`).
-    #[allow(dead_code)]
-    pub(crate) fn contents_report(&self) -> String {
-        #[cfg(not(feature = "mem-profile"))]
-        return String::from("null");
-        #[cfg(feature = "mem-profile")]
-        {
-            use std::mem::size_of;
-            // A state is a few integers per folder appended to; pages are read per commit and dropped after it.
-            let rows: usize = self.contents.values().map(|c| c.row_count).sum();
-            let state_bytes =
-                self.contents.capacity() * (size_of::<u32>() + size_of::<ContentsState>() + 1);
-            format!(
-                "{{\"folders\":{},\"rows\":{rows},\"state_bytes\":{state_bytes},\"folder_paths\":{},\"folder_path_bytes\":{}}}",
-                self.contents.len(),
-                self.folders.len(),
-                self.folders.iter().map(|(path, _)| path.iter().map(String::capacity).sum::<usize>() + path.capacity() * size_of::<String>() + size_of::<Vec<String>>() + size_of::<NodeId>()).sum::<usize>()
-            )
-        }
     }
 }

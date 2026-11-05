@@ -120,7 +120,7 @@ pub struct StringEntry {
 
 impl StringEntry {
     pub fn new(size: u32, buffer: Vec<u8>) -> MessagingResult<Self> {
-        if size % 2 != 0 || size as usize != buffer.len() {
+        if !size.is_multiple_of(2) || size as usize != buffer.len() {
             Err(MessagingError::NamedPropertyMapStringEntryOutOfBounds)
         } else {
             Ok(Self { size, buffer })

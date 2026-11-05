@@ -1,5 +1,5 @@
 use pstsmith::convert::{convert_manifest, ManifestOptions, Output};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn temp_dir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("pstsmith-convert-{name}-{}", std::process::id()));
@@ -18,7 +18,7 @@ fn item(key: &str, search_key: &str) -> String {
     )
 }
 
-fn write_manifest(dir: &PathBuf, lines: &[&str]) -> PathBuf {
+fn write_manifest(dir: &Path, lines: &[&str]) -> PathBuf {
     let path = dir.join("manifest.jsonl");
     std::fs::write(&path, lines.join("\n") + "\n").unwrap();
     path

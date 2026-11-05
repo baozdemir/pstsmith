@@ -35,7 +35,7 @@ pub const LTP_ROW_ID_PROP_ID: u16 = 0x67F2;
 pub const LTP_ROW_VERSION_PROP_ID: u16 = 0x67F3;
 
 pub const fn existence_bitmap_size(column_count: usize) -> usize {
-    column_count / 8 + if column_count % 8 == 0 { 0 } else { 1 }
+    column_count / 8 + if column_count.is_multiple_of(8) { 0 } else { 1 }
 }
 
 pub const fn check_existence_bitmap(column: usize, existence_bitmap: &[u8]) -> LtpResult<bool> {
@@ -72,11 +72,11 @@ impl TableContextInfo {
             return Err(LtpError::InvalidTableContextColumnCount(columns.len()));
         }
 
-        if end_4byte_values % 4 != 0 {
+        if !end_4byte_values.is_multiple_of(4) {
             return Err(LtpError::InvalidTableContext4ByteOffset(end_4byte_values));
         }
 
-        if end_2byte_values % 2 != 0 || end_2byte_values < end_4byte_values {
+        if !end_2byte_values.is_multiple_of(2) || end_2byte_values < end_4byte_values {
             return Err(LtpError::InvalidTableContext2ByteOffset(end_2byte_values));
         }
 
