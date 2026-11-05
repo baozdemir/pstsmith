@@ -37,7 +37,7 @@ name, which is the output file's name.
 | **Out of space** (ENOSPC) on ext4, xfs and tmpfs | 12 of 12 cases refused cleanly, no partial output left |
 | **Same bytes on every platform** | the corpus outputs are byte-identical on macOS arm64, Linux arm64 and Linux x86-64; the 8 mail fixture outputs are byte-identical from the release builds of all seven targets (Linux x86-64 and arm64, glibc and musl; macOS arm64 and x86-64; Windows x86-64), and the release workflow checks every target's build so before it is published |
 | **Memory** (peak RSS of the converter, macOS) | 17.2 MB at 128,000 items in one folder; 13.0 MB for 32,000 items in 1,024 folders; 6.5 MB for an export with a 6 GiB attachment. Growth is bounded by caches with named caps in the code |
-| Four independent code reviews | every defect found fixed, each fix with a test that fails on the code before it; a few findings kept as measured bounds or documented conditions instead |
+| Four independent code reviews of the writer | every defect found fixed, each fix with a test that fails on the code before it; a few findings kept as measured bounds or documented conditions instead |
 
 ## Recorded checks of the mail input (November 2026)
 
@@ -46,6 +46,7 @@ name, which is the output file's name.
 | libpff oracle on the 8 mail fixture cases (EML, Google Takeout, Thunderbird, Apple Mail as a folder tree, as one mailbox and as its mbox file, CRLF MBOX, Maildir), legacy charsets, Maildir names in modified UTF-7, the MBOX separator forms of Thunderbird, Google Takeout, mutt, UW c-client, System V and UUCP, a Date-style one and a body line that must not split included | 46 messages, 0 mismatches; the negative control finds 92, in each of the 8 pairs of a case with the next case's PST |
 | XstReader and libpff reading the same mail fixture PSTs | 46 messages, 0 disagreements, attached e-mails, categories, transport headers, search keys and times included |
 | Structure checks on the mail fixture PSTs | 8 of 8 pass |
+| Ten independent code reviews of the release branch (fresh reviewers, read only: the whole branch, then each fix pass) | every defect found fixed, each fix with a test that fails on the code before it; the tenth review found no critical or important problem |
 | **The npm package as a user installs it** (a release dry run: the `pstsmith` tarball with its platform package in an empty project, no `PSTSMITH_BINARY`) | on Linux x86-64 with glibc (Node.js 24) and with musl (Alpine, Node.js 20), macOS arm64 and Windows x86-64, the package finds its platform's binary and converts the EML fixture to the expected bytes |
 | **Memory** (peak RSS, macOS; the ignored test `mbox_streams_without_reading_whole_file`) | 798 MB for a 2 GiB MBOX whose largest message is 300 MiB: one message is held at a time, and the peak was about 2.5 times the largest message |
 

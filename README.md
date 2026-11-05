@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<p align="center"><b>Read, create and append PST files in pure Rust, on any OS, without Outlook.</b></p>
+<p align="center"><b>Convert EML, MBOX and Maildir mail to Outlook PST files, on Linux, macOS and Windows, without Outlook.</b></p>
 
 <p align="center">
   <a href="https://crates.io/crates/pstsmith"><img alt="crates.io" src="https://img.shields.io/crates/v/pstsmith.svg"></a>
@@ -18,7 +18,8 @@
 
 pstsmith turns mail into Outlook data files (`.pst`): EML files, MBOX files (Google Takeout, Thunderbird, Apple Mail),
 Maildir directories, or a JSONL manifest of messages. It is a Rust library, a command-line tool and an npm package,
-and it needs nothing else installed: no Outlook, no MAPI, no Windows.
+and it needs nothing else installed: no Outlook, no MAPI, no Windows. The library also reads, creates and appends to
+PST files directly.
 
 It started from Microsoft's open-source PST reader, [outlook-pst-rs](https://github.com/microsoft/outlook-pst-rs), and
 the write support of [a fork of it](https://github.com/dongs0104/outlook-pst-rs); [docs/UPSTREAM.md](docs/UPSTREAM.md)
