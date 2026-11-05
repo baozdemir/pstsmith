@@ -165,3 +165,24 @@ test("an_input_that_looks_like_an_option_is_an_input", async () => {
   }
   rmSync(d, { recursive: true });
 });
+
+test("platform_packages_carry_the_licence", async () => {
+  // MIT asks for the notice in every copy; each @pstsmith/<platform> package is one.
+  const { execFileSync } = await import("node:child_process");
+  const { readFileSync } = await import("node:fs");
+  const d = dir();
+  const targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "aarch64-unknown-linux-gnu", "aarch64-unknown-linux-musl",
+    "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"];
+  for (const target of targets) {
+    mkdirSync(join(d, "bin", target), { recursive: true });
+    writeFileSync(join(d, "bin", target, target.includes("windows") ? "pstsmith.exe" : "pstsmith"), "stand-in");
+  }
+  execFileSync(process.execPath, [resolve(import.meta.dirname, "../platform-packages.mjs"), "0.1.0", join(d, "bin"), join(d, "out")]);
+  const licence = readFileSync(resolve(import.meta.dirname, "../LICENSE"), "utf8");
+  for (const key of readdirSync(join(d, "out"))) {
+    const manifest = JSON.parse(readFileSync(join(d, "out", key, "package.json"), "utf8"));
+    assert.ok(manifest.files.includes("LICENSE"), key);
+    assert.equal(readFileSync(join(d, "out", key, "LICENSE"), "utf8"), licence, key);
+  }
+  rmSync(d, { recursive: true });
+});

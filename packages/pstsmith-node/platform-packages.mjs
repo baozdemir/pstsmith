@@ -19,6 +19,8 @@ for (const [key, [target, os, cpu, libc]] of Object.entries(TARGETS)) {
   const exe = os === "win32" ? "pstsmith.exe" : "pstsmith";
   mkdirSync(join(dir, "bin"), { recursive: true });
   copyFileSync(join(binaries, target, exe), join(dir, "bin", exe));
+  // The MIT notice goes with every copy of the binary.
+  copyFileSync(new URL("./LICENSE", import.meta.url), join(dir, "LICENSE"));
   if (os !== "win32") chmodSync(join(dir, "bin", exe), 0o755);
   const manifest = {
     name: `@pstsmith/${key}`,
@@ -29,7 +31,7 @@ for (const [key, [target, os, cpu, libc]] of Object.entries(TARGETS)) {
     os: [os],
     cpu: [cpu],
     ...(libc ? { libc: [libc] } : {}),
-    files: ["bin"],
+    files: ["bin", "LICENSE"],
   };
   writeFileSync(join(dir, "package.json"), JSON.stringify(manifest, null, 2) + "\n");
 }
