@@ -43,7 +43,7 @@ name, which is the output file's name.
 
 | Check | Result |
 |---|---|
-| libpff oracle on the 8 mail fixture cases (EML, Google Takeout, Thunderbird, Apple Mail as a folder tree, as one mailbox and as its mbox file, CRLF MBOX, Maildir), legacy charsets, Maildir names in modified UTF-7, the MBOX separator forms of Thunderbird, Google Takeout, mutt, UW c-client, System V and UUCP, a Date-style one and a body line that must not split included | 46 messages, 0 mismatches; the negative control finds 88 |
+| libpff oracle on the 8 mail fixture cases (EML, Google Takeout, Thunderbird, Apple Mail as a folder tree, as one mailbox and as its mbox file, CRLF MBOX, Maildir), legacy charsets, Maildir names in modified UTF-7, the MBOX separator forms of Thunderbird, Google Takeout, mutt, UW c-client, System V and UUCP, a Date-style one and a body line that must not split included | 46 messages, 0 mismatches; the negative control finds 92, in every pair of cases |
 | XstReader and libpff reading the same mail fixture PSTs | 46 messages, 0 disagreements, attached e-mails, categories, transport headers, search keys and times included |
 | Structure checks on the mail fixture PSTs | 8 of 8 pass |
 | **Memory** (peak RSS, macOS; the ignored test `mbox_streams_without_reading_whole_file`) | 798 MB for a 2 GiB MBOX whose largest message is 300 MiB: one message is held at a time, and the peak was about 2.5 times the largest message |

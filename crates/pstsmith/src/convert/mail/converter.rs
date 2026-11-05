@@ -364,8 +364,7 @@ impl Converter {
                 let here = if folder.is_empty() { vec![top.to_string()] } else { folder.to_vec() };
                 let empty = fs::metadata(&entry).is_ok_and(|metadata| metadata.len() == 0);
                 // An empty mailbox: Thunderbird's file beside its index, Apple Mail's `Name.mbox/mbox`.
-                let empty_mail_folder =
-                    empty && (dir.join(format!("{name}.msf")).is_file() || (name == "mbox" && real_name(dir).is_some_and(|dir| dir.ends_with(".mbox"))));
+                let empty_mail_folder = empty && (dir.join(format!("{name}.msf")).is_file() || apple_mailbox(&entry).is_some());
                 if name.to_ascii_lowercase().ends_with(".eml") {
                     let raw = fs::read(&entry).map_err(|e| unreadable(&entry, e))?;
                     self.add_message(&raw, &entry_container, &here, None, None, false)?;
@@ -541,15 +540,15 @@ fn is_month(word: &str) -> bool {
     MONTHS.iter().any(|month| word.eq_ignore_ascii_case(month))
 }
 
-/// A zone: `+hhmm` or `-hhmm` (hours to 23), or 1 to 5 capital letters that are not a month name (RFC 5322 4.3: UT,
-/// GMT, Z and the North American names have their offsets; any other name is taken as UTC). As (west of GMT, hours,
-/// minutes).
+/// A zone: `+hhmm` or `-hhmm` (hours to 23), or 1 to 5 capital letters that are not a month name nor AM or PM (RFC
+/// 5322 4.3: UT, GMT, Z and the North American names have their offsets; any other name is taken as UTC). As (west of
+/// GMT, hours, minutes).
 fn zone(word: &str) -> Option<(bool, u8, u8)> {
     if word.len() == 5 && (word.starts_with('+') || word.starts_with('-')) && ascii_digits(&word[1..], 4..=4) {
         let (hours, minutes) = (word[1..3].parse().ok()?, word[3..].parse().ok()?);
         return (hours <= 23 && minutes <= 59).then_some((word.starts_with('-'), hours, minutes));
     }
-    if !(1..=5).contains(&word.len()) || !word.bytes().all(|byte| byte.is_ascii_uppercase()) || is_month(word) {
+    if !(1..=5).contains(&word.len()) || !word.bytes().all(|byte| byte.is_ascii_uppercase()) || is_month(word) || word == "AM" || word == "PM" {
         return None;
     }
     Some(match word {
@@ -568,7 +567,7 @@ fn zone(word: &str) -> Option<(bool, u8, u8)> {
 const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 /// A zone word between the time and the year, as System V's `%Z` writes it: a zone, tzdata's numeric abbreviation
-/// `+hh`/`-hh` ("+03"), or 1 to 5 letters starting with a capital, with two capitals at least, that are not a month
+/// `+hh`/`-hh` ("+03"), or 2 to 5 letters starting with a capital, with two capitals at least, that are not a month
 /// name ("ChST", taken as UTC; a capitalised word such as "Room" is none).
 fn zone_abbreviation(word: &str) -> Option<(bool, u8, u8)> {
     if let Some(found) = zone(word) {
@@ -582,7 +581,7 @@ fn zone_abbreviation(word: &str) -> Option<(bool, u8, u8)> {
         && word.bytes().all(|byte| byte.is_ascii_alphabetic())
         && word.as_bytes()[0].is_ascii_uppercase()
         && word.bytes().filter(u8::is_ascii_uppercase).count() >= 2;
-    (letters && !is_month(word)).then_some((false, 0, 0))
+    (letters && !is_month(word) && word != "AM" && word != "PM").then_some((false, 0, 0))
 }
 
 /// The date, when it exists (a real calendar day, year 1900 to 3000, hours to 23, minutes and seconds to 59).
@@ -839,7 +838,7 @@ mod tests {
     ];
 
     /// The asctime cases the oracle's self-test holds too.
-    const ASCTIME_LINES: [(&str, bool); 41] = [
+    const ASCTIME_LINES: [(&str, bool); 43] = [
         ("From a Mon Jan  1 10:00:00 2024", true),
         ("From - Mon Jan  1 10:00:00 2024", true),
         ("From 1@xxx Mon Jan 01 10:01:00 +0000 2024", true),
@@ -885,6 +884,9 @@ mod tests {
         ("From Tue Dec 3, 14:00 Gate 1234", false),
         ("From the May 5 meeting at 10:00 Room 2024", false),
         ("From us Dec 24 at 18:00 Merry Xmas 2024", false),
+        // AM and PM are times of day, not zones.
+        ("From Mon Jan 6 10:00 AM to Fri Jan 10 5:00 PM 2024", false),
+        ("From a Mon Jan  1 10:00:00 AM 2024", false),
     ];
 
     #[test]

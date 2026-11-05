@@ -34,12 +34,14 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 CASES = [
     ("mail-eml", "mail/eml"),
     ("mail-takeout", "mail/takeout/All mail Including Spam and Trash.mbox"),
+    ("mail-apple-file", "mail/apple/Export/Clients.mbox/mbox"),
     ("mail-thunderbird", "mail/thunderbird/Local Folders"),
     ("mail-apple", "mail/apple/Export"),
-    ("mail-apple-mailbox", "mail/apple/Export/Clients.mbox"),
-    ("mail-apple-file", "mail/apple/Export/Clients.mbox/mbox"),
     ("mail-crlf", "mail/crlf/Windows.mbox"),
     ("mail-maildir", "mail/maildir/Maildir"),
+    # The other Apple Mail inputs hold the same message as mail-apple; kept apart so the negative control's
+    # neighbouring pairs differ.
+    ("mail-apple-mailbox", "mail/apple/Export/Clients.mbox"),
 ]
 GMAIL_FOLDERS = [("Inbox", "Inbox"), ("Sent", "Sent Items"), ("Drafts", "Drafts"), ("Spam", "Junk Email"), ("Trash", "Deleted Items")]
 
@@ -85,19 +87,20 @@ def clock(word):
 def zone(word):
     if len(word) == 5 and word[0] in "+-" and digits(word[1:], 4, 4):
         return int(word[1:3]) <= 23 and int(word[3:]) <= 59
-    return 1 <= len(word) <= 5 and all("A" <= c <= "Z" for c in word) and ascii_lower(word) not in MONTHS
+    return (1 <= len(word) <= 5 and all("A" <= c <= "Z" for c in word) and ascii_lower(word) not in MONTHS
+            and word not in ("AM", "PM"))
 
 
 def zone_abbreviation(word):
     """A zone word between the time and the year (System V's %Z): a zone, +hh/-hh, or 1 to 5 letters starting with a
-    capital, with two capitals at least, that are not a month name."""
+    capital, with two capitals at least (so 2 to 5), that are not a month name."""
     if zone(word):
         return True
     if len(word) == 3 and word[0] in "+-" and digits(word[1:], 2, 2):
         return int(word[1:]) <= 23
     letters = (1 <= len(word) <= 5 and all("a" <= c <= "z" or "A" <= c <= "Z" for c in word) and "A" <= word[0] <= "Z"
                and sum("A" <= c <= "Z" for c in word) >= 2)
-    return letters and ascii_lower(word) not in MONTHS
+    return letters and ascii_lower(word) not in MONTHS and word not in ("AM", "PM")
 
 
 def date_exists(year, month, day, hour, minute, second):
@@ -216,6 +219,8 @@ ASCTIME_LINES = [
     ("From Tue Dec 3, 14:00 Gate 1234", False),
     ("From the May 5 meeting at 10:00 Room 2024", False),
     ("From us Dec 24 at 18:00 Merry Xmas 2024", False),
+    ("From Mon Jan 6 10:00 AM to Fri Jan 10 5:00 PM 2024", False),
+    ("From a Mon Jan  1 10:00:00 AM 2024", False),
 ]
 
 
@@ -327,7 +332,7 @@ def labels_route(path):
     # The parent's own name; only "." (or nothing) is resolved, so a symlinked file is judged where it is listed.
     parent = path.parent.name if path.parent.name not in ("", "..") else path.parent.resolve().name
     return not ((path.parent / (path.name + ".msf")).is_file() or parent.endswith(".sbd")
-                or (path.name == "mbox" and parent.endswith(".mbox")))
+                or (path.name == "mbox" and parent.endswith(".mbox") and len(parent) > 5))
 
 
 def source_messages(input_path):
@@ -561,16 +566,23 @@ def main():
             pst = Path(out) / f"{case}.pst"
             subprocess.run([binary, "convert", str(FIXTURES / input_path), "-o", str(pst)], check=True, capture_output=True)
             outputs[case] = pst
+        blind = []
         for index, (case, input_path) in enumerate(CASES):
             other = CASES[(index + 1) % len(CASES)][0] if negative else case
             sources = source_messages(FIXTURES / input_path)
             compared += len(sources)
-            problems += compare(case, sources, pst_messages(outputs[other]))
+            found = compare(case, sources, pst_messages(outputs[other]))
+            problems += found
+            if negative and not found:
+                blind.append(f"{case} against {other}")
     for problem in problems:
         print(problem)
     print(f"{compared} messages compared, {len(problems)} mismatches")
     if negative:
-        sys.exit(0 if problems else 1)
+        # Every pair must differ, or the oracle would not see a case's PST replaced by another's.
+        for pair in blind:
+            print(f"negative control blind: {pair}")
+        sys.exit(0 if problems and not blind else 1)
     sys.exit(1 if problems else 0)
 
 
