@@ -290,3 +290,23 @@ fn a_json_result_with_stdout_closed_is_an_error_not_a_panic() {
     assert!(stderr.lines().next().is_some_and(|line| line.starts_with("{\"detail\"") && line.contains("\"error\":\"io\"")), "{stderr}");
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// Apple Mail's `Name.mbox/mbox` is a mail program's folder whether it is given as `mbox` from inside `Name.mbox`
+/// or by a longer path: its Gmail labels move nothing, so both conversions write the same bytes.
+#[test]
+fn a_relative_mbox_inside_an_apple_mailbox_is_judged_like_its_full_path() {
+    let dir = temp_dir("relative-mbox");
+    let mailbox = dir.join("Clients.mbox");
+    std::fs::create_dir_all(&mailbox).unwrap();
+    std::fs::write(mailbox.join("mbox"), "From a Mon Jan  1 10:00:00 2024\nFrom: a@example.invalid\nSubject: filed\nX-Gmail-Labels: Archived\n\nbody\n").unwrap();
+    let run = |current: &std::path::Path, input: &str, output: &std::path::Path| {
+        let result = Command::new(env!("CARGO_BIN_EXE_pstsmith")).current_dir(current).args(["convert", input, "-o", output.to_str().unwrap()]).output().unwrap();
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+    };
+    std::fs::create_dir_all(dir.join("a")).unwrap();
+    std::fs::create_dir_all(dir.join("b")).unwrap();
+    run(&mailbox, "mbox", &dir.join("a").join("out.pst"));
+    run(&dir, "Clients.mbox/mbox", &dir.join("b").join("out.pst"));
+    assert!(std::fs::read(dir.join("a").join("out.pst")).unwrap() == std::fs::read(dir.join("b").join("out.pst")).unwrap(), "the relative input was routed by its labels");
+    std::fs::remove_dir_all(&dir).unwrap();
+}

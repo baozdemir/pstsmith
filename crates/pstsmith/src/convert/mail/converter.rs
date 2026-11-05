@@ -117,8 +117,8 @@ impl Converter {
     /// Stops the conversion once `flag` is true, for example from a signal handler: the next message added, the next
     /// item [`finish`](Converter::finish) writes, or the attachment being written fails with `interrupted`, and the
     /// conversion does not finish. As on any error, `finish` removes the files it created, and dropping the
-    /// converter removes the staging directory; nothing else is touched. A flag set once the last item is written
-    /// stops nothing: the files are then whole.
+    /// converter removes the staging directory; nothing else is touched. A flag set after `finish` has closed the last
+    /// file stops nothing: the files are then whole.
     pub fn set_cancel_flag(&mut self, flag: Arc<AtomicBool>) {
         self.cancel = Some(flag);
     }
@@ -595,34 +595,40 @@ fn date_header_style(line: &[u8]) -> Option<i64> {
     timestamp(rest[2].parse().ok()?, month, rest[0].parse().ok()?, clock(&rest[3])?, tz)
 }
 
-/// An MBOX "From " line (asctime, as mail programs write it): `Some(date)` when the words after the sender end with a
-/// four-digit year and one of them is a time ("From sender Mon Jan  1 10:00:00 2024", also with a zone just before
-/// the year); `Some(None)` when its date cannot be read; `None` when the line is no MBOX "From " line. A zone after
-/// the year (UW c-client, Alpine: "Mon Jan  1 10:00:00 2024 +0000") counts only in that order, a month name and the
-/// time just before the year, so that a body line such as "From 10:00 to 12:00 on 15 March 2024 CET" is none.
+/// An MBOX "From " line (asctime, as mail programs write it, with an English month name): `Some(date)` when the words
+/// after the sender end with a four-digit year, a month name is among them, and the time comes just before the year
+/// or before one or two zone words before it ("From sender Mon Jan  1 10:00:00 2024", Google Takeout's "... 10:01:00
+/// +0000 2024", System V's "... 10:00 PST 2024", glibc's "... 10:00:00 MET DST 1998"), or just before the year with
+/// a zone after it (UW c-client, Alpine: "... 10:00:00 2024 +0000"); `Some(None)` when its date cannot be read;
+/// `None` when the line is no MBOX "From " line. So a body line such as "From 10:00 to 12:00 on 15 March 2024" is
+/// none.
 fn from_line_date(line: &[u8]) -> Option<Option<i64>> {
     let mut words = from_line_words(line)?;
+    if !words.iter().any(|word| MONTHS.iter().any(|month| word.eq_ignore_ascii_case(month))) {
+        return None;
+    }
     let mut tz = (false, 0, 0);
     let n = words.len();
-    let has_month = |words: &[String]| words.iter().any(|word| MONTHS.iter().any(|month| word.eq_ignore_ascii_case(month)));
-    if n >= 3 && ascii_digits(&words[n - 2], 4..=4) && clock(&words[n - 3]).is_some() && has_month(&words) {
+    if n >= 3 && ascii_digits(&words[n - 2], 4..=4) && clock(&words[n - 3]).is_some() {
         if let Some(found) = zone(&words[n - 1]) {
             tz = found;
             words.pop();
         }
     }
     let year: u16 = words.last().filter(|word| ascii_digits(word, 4..=4))?.parse().ok()?;
-    let time = words.iter().find_map(|word| clock(word))?;
-    let month = words.iter().find_map(|word| MONTHS.iter().position(|month| word.eq_ignore_ascii_case(month)));
-    let day = words.iter().find(|word| ascii_digits(word, 1..=2)).and_then(|word| word.parse::<u8>().ok());
-    // A zone just before the year (Google Takeout: "+0000 2024"; System V: "PST 2024") gives the offset too.
-    if let Some(found) = words.len().checked_sub(2).and_then(|at| zone(&words[at])) {
-        tz = found;
+    let before = &words[..words.len() - 1];
+    let zones = before.iter().rev().take_while(|word| clock(word).is_none() && zone(word).is_some()).count();
+    if zones > 2 {
+        return None;
     }
-    Some(match (month, day) {
-        (Some(month), Some(day)) => timestamp(year, month as u8 + 1, day, time, tz),
-        _ => None,
-    })
+    let time = clock(before.get(before.len().checked_sub(zones + 1)?)?)?;
+    // A zone just before the year (Takeout's "+0000", System V's "PST") gives the offset.
+    if zones > 0 {
+        tz = zone(&before[before.len() - 1]).unwrap_or(tz);
+    }
+    let month = words.iter().find_map(|word| MONTHS.iter().position(|month| word.eq_ignore_ascii_case(month)))?;
+    let day = words.iter().find(|word| ascii_digits(word, 1..=2)).and_then(|word| word.parse::<u8>().ok());
+    Some(day.and_then(|day| timestamp(year, month as u8 + 1, day, time, tz)))
 }
 
 fn error(code: &'static str, exit_code: u8, detail: impl Into<String>) -> ConvertError {
@@ -797,7 +803,7 @@ mod tests {
     ];
 
     /// The asctime cases the oracle's self-test holds too.
-    const ASCTIME_LINES: [(&str, bool); 20] = [
+    const ASCTIME_LINES: [(&str, bool); 31] = [
         ("From a Mon Jan  1 10:00:00 2024", true),
         ("From - Mon Jan  1 10:00:00 2024", true),
         ("From 1@xxx Mon Jan 01 10:01:00 +0000 2024", true),
@@ -819,6 +825,18 @@ mod tests {
         ("From our office, 10:00 Jan 5 2024 PST", false),
         ("From noon 12:00 2024 +0100", false),
         ("From Monday 9:00 AM until Friday 5 January 2024 EST", false),
+        // The same order is needed without a zone; real forms keep splitting.
+        ("From 10:00 to 12:00 on 15 March 2024", false),
+        ("From 8:30 to 17:00 on 2 Jan 2024", false),
+        ("From our office, 10:00 Jan 5 2024", false),
+        ("From 9:00 to 17:00 in 2024", false),
+        ("From noon 12:00 2024", false),
+        ("From me at 10:00 GMT 2024", false),
+        ("From 10:00 to 12:00 PST 2024", false),
+        ("From Monday 9:00 AM until Friday 5 January 2024", false),
+        ("From u Mon Mar 30 10:00:00 MET DST 1998", true),
+        ("From MAILER-DAEMON Mon Jan  1 10:00:00 2024", true),
+        ("From ???@??? Mon Jan  1 10:00:00 2024", true),
     ];
 
     #[test]

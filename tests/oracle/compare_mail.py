@@ -36,6 +36,7 @@ CASES = [
     ("mail-takeout", "mail/takeout/All mail Including Spam and Trash.mbox"),
     ("mail-thunderbird", "mail/thunderbird/Local Folders"),
     ("mail-apple", "mail/apple/Export"),
+    ("mail-apple-mailbox", "mail/apple/Export/Clients.mbox"),
     ("mail-crlf", "mail/crlf/Windows.mbox"),
     ("mail-maildir", "mail/maildir/Maildir"),
 ]
@@ -119,17 +120,24 @@ def date_header_style(line):
 
 
 def asctime_style(line):
-    """Whether the words after the sender end with a four-digit year and one is a time; a zone after the year counts
-    only after a month name and with the time just before the year."""
+    """Whether the words after the sender end with a four-digit year, a month name is among them, and the time comes
+    just before the year or before one or two zone words before it, or just before the year with a zone after it."""
     words = from_line_words(line)
-    if words is None:
+    if words is None or not any(ascii_lower(w) in MONTHS for w in words):
         return False
-    has_month = any(ascii_lower(w) in MONTHS for w in words)
-    if len(words) >= 3 and digits(words[-2], 4, 4) and clock(words[-3]) is not None and has_month and zone(words[-1]):
+    if len(words) >= 3 and digits(words[-2], 4, 4) and clock(words[-3]) is not None and zone(words[-1]):
         words = words[:-1]
     if not words or not digits(words[-1], 4, 4):
         return False
-    return any(clock(w) is not None for w in words)
+    before = words[:-1]
+    zones = 0
+    for w in reversed(before):
+        if clock(w) is not None or not zone(w):
+            break
+        zones += 1
+    if zones > 2 or len(before) < zones + 1:
+        return False
+    return clock(before[len(before) - zones - 1]) is not None
 
 
 DATE_HEADER_LINES = [
@@ -174,6 +182,17 @@ ASCTIME_LINES = [
     ("From our office, 10:00 Jan 5 2024 PST", False),
     ("From noon 12:00 2024 +0100", False),
     ("From Monday 9:00 AM until Friday 5 January 2024 EST", False),
+    ("From 10:00 to 12:00 on 15 March 2024", False),
+    ("From 8:30 to 17:00 on 2 Jan 2024", False),
+    ("From our office, 10:00 Jan 5 2024", False),
+    ("From 9:00 to 17:00 in 2024", False),
+    ("From noon 12:00 2024", False),
+    ("From me at 10:00 GMT 2024", False),
+    ("From 10:00 to 12:00 PST 2024", False),
+    ("From Monday 9:00 AM until Friday 5 January 2024", False),
+    ("From u Mon Mar 30 10:00:00 MET DST 1998", True),
+    ("From MAILER-DAEMON Mon Jan  1 10:00:00 2024", True),
+    ("From ???@??? Mon Jan  1 10:00:00 2024", True),
 ]
 
 
@@ -283,7 +302,7 @@ def labels_route(path):
     """Whether an MBOX's Gmail labels choose its messages' folders: not for a mail program's folder (a file beside its
     Thunderbird .msf index or inside a .sbd directory, Apple Mail's Name.mbox/mbox)."""
     # The parent's own name; only "." (or nothing) is resolved, so a symlinked file is judged where it is listed.
-    parent = path.parent.name or path.parent.resolve().name
+    parent = path.parent.name if path.parent.name not in ("", "..") else path.parent.resolve().name
     return not ((path.parent / (path.name + ".msf")).is_file() or parent.endswith(".sbd")
                 or (path.name == "mbox" and parent.endswith(".mbox")))
 
@@ -291,12 +310,13 @@ def labels_route(path):
 def source_messages(input_path):
     """[(folder path, raw bytes, flags)] in pstsmith's documented order."""
     out = []
-    name = input_path.name or input_path.resolve().name
+    name = input_path.name if input_path.name not in ("", "..") else input_path.resolve().name
     if input_path.is_dir():
-        # A Name.sbd or Name.mbox directory given on its own is named Name.
+        # A Name.sbd or Name.mbox directory given on its own is named Name (one suffix, as pstsmith strips).
         for suffix in (".sbd", ".mbox"):
             if name.endswith(suffix) and len(name) > len(suffix):
                 name = name[:-len(suffix)]
+                break
         if is_maildir(input_path):
             maildir_messages(input_path, ["Inbox"], [], out)
         else:

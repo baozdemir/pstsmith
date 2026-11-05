@@ -43,9 +43,9 @@ name, which is the output file's name.
 
 | Check | Result |
 |---|---|
-| libpff oracle on the 6 mail fixture cases (EML, Google Takeout, Thunderbird, Apple Mail, CRLF MBOX, Maildir), legacy charsets and Maildir names in modified UTF-7 included | 37 messages, 0 mismatches; the negative control finds 74 |
-| XstReader and libpff reading the same mail fixture PSTs | 37 messages, 0 disagreements, attached e-mails, categories, transport headers, search keys and times included |
-| Structure checks on the mail fixture PSTs | 6 of 6 pass |
+| libpff oracle on the 7 mail fixture cases (EML, Google Takeout, Thunderbird, Apple Mail as a folder tree and as one mailbox, CRLF MBOX, Maildir), legacy charsets, Maildir names in modified UTF-7 and every MBOX separator form included | 40 messages, 0 mismatches; the negative control finds 78 |
+| XstReader and libpff reading the same mail fixture PSTs | 40 messages, 0 disagreements, attached e-mails, categories, transport headers, search keys and times included |
+| Structure checks on the mail fixture PSTs | 7 of 7 pass |
 | **Memory** (peak RSS, macOS; the ignored test `mbox_streams_without_reading_whole_file`) | 798 MB for a 2 GiB MBOX whose largest message is 300 MiB: one message is held at a time, and the peak was about 2.5 times the largest message |
 
 The MIME mapping changes nothing in the writer: a message is mapped to the item form of the manifest and then takes
