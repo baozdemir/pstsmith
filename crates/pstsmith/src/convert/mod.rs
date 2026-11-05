@@ -3,6 +3,10 @@
 //! [`convert_manifest`] reads a JSONL manifest of mail items (`pst-export-manifest/1` or `/2`, documented in
 //! `docs/MANIFEST.md`) and writes one PST file or size-limited parts. A failed conversion removes everything it
 //! created, so a caller never sees a partial output.
+//!
+//! [`mail::Converter`] takes EML files, MBOX files, Maildir directories and Thunderbird or Apple Mail folders: each
+//! message is mapped to a manifest item following MS-OXCMAIL and converted the same way.
+#![warn(missing_docs)]
 
 #[cfg(feature = "mail")]
 pub mod mail;

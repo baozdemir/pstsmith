@@ -6,6 +6,27 @@ The PST format is documented in the [MS-PST](https://learn.microsoft.com/en-us/o
 open specification. Type names follow that document, adjusted to Rust conventions, and doc comments link to the
 sections they implement.
 
+## Converting mail
+
+`convert::mail::Converter` turns EML files, MBOX files (Google Takeout, Thunderbird, Apple Mail), Maildir directories
+and directories of them into one PST file or size-limited parts; `convert::convert_manifest` does the same for a
+JSONL manifest of messages ([format](https://github.com/baozdemir/pstsmith/blob/main/docs/MANIFEST.md)).
+
+```rust,no_run
+use pstsmith::convert::{mail::Converter, ManifestOptions, Output};
+
+fn main() -> Result<(), pstsmith::convert::ConvertError> {
+    let mut converter = Converter::create(Output::File("archive.pst".into()), &ManifestOptions::default())?;
+    converter.add_path("mail/Inbox.mbox".as_ref())?;
+    let report = converter.finish()?;
+    println!("{} messages, {} warnings", report.written(), report.warnings().len());
+    Ok(())
+}
+```
+
+A failed conversion removes everything it created. The features `convert` and `mail` are on by default; without
+them the crate is the reader and writer alone.
+
 ## Reading
 
 `UnicodePstFile::open` and `AnsiPstFile::open` (with `open_store`) read Unicode (Outlook 2003 and later) and ANSI

@@ -1,13 +1,35 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to pstsmith are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The command line's changes are in
+[crates/pstsmith-cli/CHANGELOG.md](crates/pstsmith-cli/CHANGELOG.md).
 
 ## [Unreleased]
 
-## [1.2.14] - 2026-10-15
+### Added
+
+- First release as pstsmith, a hard fork of `outlook-pst-rw` 1.2.14 ([docs/UPSTREAM.md](docs/UPSTREAM.md) lists every
+  change to it).
+- `pstsmith::convert`: the conversion of a JSONL manifest of messages (`pst-export-manifest/1` and `/2`) into one PST
+  file or size-limited parts, with the `pst-export-result/1` report; a failed conversion removes what it created.
+- `pstsmith::convert::mail::Converter`: EML files, MBOX files (mboxo and mboxrd, LF or CRLF; Google Takeout,
+  Thunderbird, Apple Mail), Maildir and Maildir++ directories, mapped following MS-OXCMAIL: bodies, inline images,
+  attachments with their original bytes, attached e-mails, S/MIME as MS-OXOSMIME stores it, delivery and read reports,
+  Gmail labels, read and draft state, importance, categories, In-Reply-To and References, the original headers.
+
+### Changed
+
+- The writer appends to permute-encoded files (Outlook's default) as well as unencrypted ones, keeps every commit
+  atomic, streams attachments, reuses freed space, and writes allocation maps, free maps and file ends as Outlook
+  does; see [docs/UPSTREAM.md](docs/UPSTREAM.md).
+- Folder names match exactly, without case folding.
+- The minimum supported Rust version is 1.85.
+
+## History of outlook-pst-rw before the fork
+
+The entries below are those of `dongs0104/outlook-pst-rs` up to the fork point.
+
+### [1.2.14] - 2026-10-15
 
 ### Changed
 
@@ -17,13 +39,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - mark the allocation map from the commit's own block and page lists instead of re-reading both B-trees
 - flush to disk three times per commit instead of seven; new data only goes to space the committed allocation map marks free, so the committed state stays intact until the header switches roots
 
-## [1.2.13] - 2026-10-14
+### [1.2.13] - 2026-10-14
 
 ### Added
 
 - `UnicodePstFile::set_store_display_name` sets the message store PR_DISPLAY_NAME, which Outlook shows as the top-level name of an opened PST; new files otherwise keep the template name "Empty"
 
-## [1.2.12] - 2026-10-14
+### [1.2.12] - 2026-10-14
 
 ### Fixed
 
@@ -32,7 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - keep every heap allocation, row-index and property-tree node within the MS-PST 3580-byte limit and move larger values to subnodes; heap cells above it made SCANPST stop with Fatal Error 80040813
 - fill the deprecated header fields rgbFM and rgbFP with 0xFF as MS-PST requires and Outlook writes
 
-## [1.2.11] - 2026-10-13
+### [1.2.11] - 2026-10-13
 
 ### Fixed
 
@@ -44,32 +66,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - patch the parent hierarchy content count in place instead of leaking a row index into its heap per call
 - reuse space the allocation map marks free before growing the file; repeated appends no longer grow the PST with discarded B-trees and table blocks
 
-## [1.2.10] - 2026-10-12
+### [1.2.10] - 2026-10-12
 
 ### Fixed
 
 - cache each heap page's parsed page map so table rebuilds no longer re-parse it for every heap-backed cell; appending to a folder with thousands of messages is ~2-3x faster
 
-## [1.2.9] - 2026-08-13
+### [1.2.9] - 2026-08-13
 
 ### Fixed
 
 - place the first FPMap two pages after its AMap and reserve the matching page count
 
-## [1.2.8] - 2026-08-13
+### [1.2.8] - 2026-08-13
 
 ### Fixed
 
 - externalize property values that exceed the actual aligned HN page capacity
 
-## [1.2.7] - 2026-08-13
+### [1.2.7] - 2026-08-13
 
 ### Fixed
 
 - externalize oversized folder contents values such as `PR_DISPLAY_TO`
 - align HN page maps and encode each multi-level XBLOCK with its local subtree size
 
-## [1.2.6] - 2026-08-13
+### [1.2.6] - 2026-08-13
 
 ### Added
 
@@ -84,20 +106,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - preserve Outlook folder table allocations and update search records when adding folders/messages
 - write Outlook-compatible recipient, attachment, contents-table, and message-size metadata
 
-## [1.2.5] - 2026-08-11
+### [1.2.5] - 2026-08-11
 
 ### Added
 
 - create and append messages in case-insensitive nested folder paths, creating missing folders
 - write hierarchy, contents, and associated-contents nodes for newly created folders
 
-## [1.2.4] - 2026-08-10
+### [1.2.4] - 2026-08-10
 
 ### Added
 
 - write attachment Content-ID and HTML-reference properties for inline `cid:` images
 
-## [1.2.3] - 2026-08-10
+### [1.2.3] - 2026-08-10
 
 ### Added
 
@@ -109,7 +131,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - replace the single recipient name and email fields with a recipient slice
 
-## [1.2.2] - 2026-08-09
+### [1.2.2] - 2026-08-09
 
 ### Added
 
@@ -124,14 +146,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - preserve existing receive-folder properties, contents-table schemas, rows, and subnodes
 - commit appended BBT/NBT roots copy-on-write and update the receive-folder content count
 
-## [1.2.1] - 2026-08-09
+### [1.2.1] - 2026-08-09
 
 ### Added
 
 - create a new Unicode PST containing Inbox and one plain-text message
 - generate a compatibility fixture for Outlook and SCANPST validation
 
-## [1.2.0](https://github.com/microsoft/outlook-pst-rs/compare/outlook-pst-v1.1.0...outlook-pst-v1.2.0) - 2026-03-17
+### [1.2.0](https://github.com/microsoft/outlook-pst-rs/compare/outlook-pst-v1.1.0...outlook-pst-v1.2.0) - 2026-03-17
 
 ### Added
 
@@ -147,12 +169,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Merge pull request #44 from alemigo/main
 
-## [1.1.0](https://github.com/microsoft/outlook-pst-rs/compare/outlook-pst-v1.0.0...outlook-pst-v1.1.0) - 2025-07-01
+### [1.1.0](https://github.com/microsoft/outlook-pst-rs/compare/outlook-pst-v1.0.0...outlook-pst-v1.1.0) - 2025-07-01
 
 ### Fixed
 - allow 0-size MV Properties
 
-## [1.0.0](https://github.com/microsoft/outlook-pst-rs/compare/outlook-pst-v0.1.2...outlook-pst-v1.0.0) - 2025-04-11
+### [1.0.0](https://github.com/microsoft/outlook-pst-rs/compare/outlook-pst-v0.1.2...outlook-pst-v1.0.0) - 2025-04-11
 
 ### Added
 - output some more information from read_header example
@@ -171,7 +193,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - different padding in AnsiMapPage types
 - count bits within bytes
 
-## [0.1.2](https://github.com/microsoft/outlook-pst-rs/compare/outlook-pst-v0.1.1...outlook-pst-v0.1.2) - 2025-03-12
+### [0.1.2](https://github.com/microsoft/outlook-pst-rs/compare/outlook-pst-v0.1.1...outlook-pst-v0.1.2) - 2025-03-12
 
 ### Fixed
 - distinguish between missing and too many  recipient table errors
@@ -181,12 +203,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Other
 - use compressed-rtf in browse examples
 
-## [0.1.1](https://github.com/microsoft/outlook-pst-rs/compare/v0.1.0...v0.1.1) - 2025-03-10
+### [0.1.1](https://github.com/microsoft/outlook-pst-rs/compare/v0.1.0...v0.1.1) - 2025-03-10
 
 ### Fixed
 - misc. fixes for examples running against ANSI files
 
-## [0.1.0](https://github.com/microsoft/outlook-pst-rs/releases/tag/v0.1.0) - 2025-03-08
+### [0.1.0](https://github.com/microsoft/outlook-pst-rs/releases/tag/v0.1.0) - 2025-03-08
 
 ### Added
 

@@ -54,6 +54,7 @@ the manifest conversion's path unchanged, so the writer checks above apply to it
 - **Not written:** ANSI (Outlook 97-2002) files; cyclic-encoded files (appending to one is refused); contacts,
   calendar items and tasks as their own item types (a calendar invitation arrives as mail with its `.ics` attached);
   TNEF (`winmail.dat`) is kept as an attachment, not decoded; files are never compacted.
+- **Not mapped from MIME:** Reply-To (it stays in the original headers, but a reply in Outlook goes to the sender).
 - **Microsoft 365 import limits seen in the test above,** which apply to any PST:
   - Exchange Online's default maximum receive size is 36 MB (at most 150 MB); larger items are skipped by the import.
   - A mailbox has a quota of named properties (16,384 in all; 3,277 per custom namespace or in PS_PUBLIC_STRINGS;

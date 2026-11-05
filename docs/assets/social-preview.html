@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>pstsmith social preview</title>
+<!-- Rendered to social-preview.png (1280x640) with headless Chrome; see make_assets.py. -->
+<style>
+  :root { --ink: #1C2733; --muted: #4B5866; --paper: #F3F5F7; }
+  html, body { margin: 0; width: 1280px; height: 640px; background: var(--paper); }
+  body { font-family: "Avenir Next", "Avenir", "Segoe UI", sans-serif; color: var(--ink); position: relative; overflow: hidden; }
+  .mark { position: absolute; left: 120px; top: 118px; width: 760px; }
+  .tagline { position: absolute; left: 124px; top: 360px; font-size: 44px; font-weight: 500; letter-spacing: -0.01em; max-width: 1000px; line-height: 1.2; }
+  .formats { position: absolute; left: 124px; top: 490px; font-size: 28px; color: var(--muted); font-weight: 500; }
+  .quench { position: absolute; left: 0; right: 0; bottom: 0; height: 18px;
+            background: linear-gradient(90deg, #D9B44A 0%, #B06A2C 35%, #6E3C82 68%, #2C5EA8 100%); }
+</style>
+</head>
+<body>
+  <img class="mark" src="wordmark-light.svg" alt="pstsmith">
+  <div class="tagline">Read, create and append PST files in pure Rust, without Outlook.</div>
+  <div class="formats">EML, MBOX and Maildir to PST, on Linux, macOS and Windows</div>
+  <div class="quench"></div>
+</body>
+</html>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="409" height="92" viewBox="-4 -4 413 92" role="img" aria-label="pstsmith">
+  <defs>
+    <linearGradient id="temper" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#D9B44A"/><stop offset="0.35" stop-color="#B06A2C"/><stop offset="0.68" stop-color="#6E3C82"/><stop offset="1" stop-color="#2C5EA8"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="7">
+    <rect x="2" y="10" width="86" height="62" rx="9" stroke="#E6EBF0"/>
+    <path d="M10 20L45.0 47L80 20" stroke="url(#temper)" stroke-width="9"/>
+    <path d="M118 22V84 M118 40A17 18 0 1 1 118 41 M188 26C184 20 166 19 165 31C164 42 189 37 189 50C188 62 168 61 164 54 M208 6V50C208 58 214 61 222 59 M199 24H221 M259 26C255 20 237 19 236 31C235 42 260 37 260 50C259 62 239 61 235 54 M274 60V22 M274 34C274 18 294 18 294 34V60 M294 34C294 18 314 18 314 34V60 M328 24V60 M349 6V50C349 58 355 61 363 59 M340 24H362 M377 0V60 M377 36C377 16 401 16 401 36V60" stroke="#E6EBF0"/>
+  </g>
+  <circle cx="328" cy="8" r="5.25" fill="#E6EBF0"/>
+</svg>
