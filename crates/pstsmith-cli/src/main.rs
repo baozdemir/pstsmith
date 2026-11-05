@@ -161,11 +161,16 @@ fn parse_args(args: Vec<String>) -> Result<Options, ConvertError> {
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
+    // Help wherever it is asked for, as in `pstsmith convert --help`; after "--" it is an input's name.
+    if args
+        .iter()
+        .take_while(|arg| *arg != "--")
+        .any(|arg| arg == "-h" || arg == "--help")
+    {
+        print!("{HELP}");
+        return ExitCode::SUCCESS;
+    }
     match args.first().map(String::as_str) {
-        Some("-h" | "--help") => {
-            print!("{HELP}");
-            return ExitCode::SUCCESS;
-        }
         Some("-V" | "--version") => {
             println!("pstsmith {}", env!("CARGO_PKG_VERSION"));
             return ExitCode::SUCCESS;

@@ -147,6 +147,32 @@ fn cli_help_and_version() {
     );
 }
 
+#[test]
+fn help_after_a_subcommand_or_other_arguments_is_the_help() {
+    for args in [
+        &["convert", "--help"][..],
+        &["convert", "in.mbox", "-h"],
+        &["--manifest", "items.jsonl", "--help"],
+    ] {
+        let help = Command::new(env!("CARGO_BIN_EXE_pstsmith"))
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(help.status.success(), "{args:?}: {help:?}");
+        assert!(
+            String::from_utf8_lossy(&help.stdout).contains("pstsmith convert INPUT..."),
+            "{args:?}"
+        );
+    }
+    // After "--", "--help" is an input's name.
+    let input = Command::new(env!("CARGO_BIN_EXE_pstsmith"))
+        .args(["convert", "-o", "out.pst", "--", "--help"])
+        .current_dir(temp_dir("help-after-dashes"))
+        .output()
+        .unwrap();
+    assert_eq!(input.status.code(), Some(2), "{input:?}");
+}
+
 /// Writes an MBOX large enough that a conversion of it is still running when a test stops it.
 #[cfg(unix)]
 fn big_mbox(path: &std::path::Path) {
