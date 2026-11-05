@@ -10,6 +10,7 @@
 <p align="center">
   <a href="https://crates.io/crates/pstsmith"><img alt="crates.io" src="https://img.shields.io/crates/v/pstsmith.svg"></a>
   <a href="https://docs.rs/pstsmith"><img alt="docs.rs" src="https://img.shields.io/docsrs/pstsmith"></a>
+  <a href="https://www.npmjs.com/package/pstsmith"><img alt="npm" src="https://img.shields.io/npm/v/pstsmith.svg"></a>
   <a href="https://github.com/baozdemir/pstsmith/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/baozdemir/pstsmith/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="MSRV 1.88" src="https://img.shields.io/badge/MSRV-1.88-orange.svg">
@@ -39,8 +40,8 @@ pstsmith: wrote 7 messages to gmail.pst
 - **Bounded memory.** The writer streams attachments from disk: 128,000 messages in one folder took 17 MB. Mail
   input is read one message at a time, so memory follows the largest message, not the size of the input.
 - **Size-limited parts** (1, 2, 5 or 10 GB) for imports with per-file limits.
-- **Same input, same bytes:** the outputs are byte-identical on macOS and Linux (arm64 and x86-64), and CI checks the
-  fixtures' hashes on Linux, macOS and Windows.
+- **Same input, same bytes:** the release builds for all seven targets (Linux, macOS, Windows) reproduce the test
+  fixtures' files byte for byte, and CI checks the fixtures' hashes on Linux, macOS and Windows.
 - **No part dropped.** Every MIME part becomes a body or an attachment and the original headers are kept; what cannot
   be shown as mail (an unreadable message, an attached e-mail nested too deep) is kept as an `.eml` attachment and
   reported.
@@ -65,16 +66,19 @@ pstsmith convert ~/Maildir --output-dir parts --max-file-size 10GB   # parts: ex
 pstsmith convert saved/ "Local Folders" -o mixed.pst --json           # a JSON result line on stdout
 ```
 
-A directory is walked in name order: `.eml` files become a folder per directory, MBOX files and Thunderbird
-`Name.sbd` / Apple Mail `Name.mbox` folders become folders, Maildirs become folders (Maildir++ names in Dovecot's
-modified UTF-7 are decoded). Gmail labels become folders and categories, each message written once. `-o` writes one
-file of at most 10 GB (`--max-file-size`), the largest PST Purview eDiscovery exports write; a larger mailbox needs
-`--output-dir`. The decoded messages are staged in a private temporary directory (`--temp-dir`), which needs about as
-much free space as the input and is removed when the conversion ends. Stopped by Ctrl-C (on Unix also SIGTERM,
-SIGQUIT or SIGHUP), `convert` removes what it created and its staging directory (a signal after the last file is
-complete keeps the files); a second Ctrl-C ends it at once and leaves them, as does a kill that cannot be caught
-(SIGKILL, an out-of-memory kill) and, on Windows, Ctrl-Break or closing the console window. A signal ignored when it
-starts (`nohup`) stays ignored.
+- **Folders.** A directory is walked in name order: `.eml` files become a folder per directory; MBOX files,
+  Thunderbird `Name.sbd` and Apple Mail `Name.mbox` folders become folders; Maildirs become folders (Maildir++ names
+  in Dovecot's modified UTF-7 are decoded). Gmail labels become folders and categories, each message written once.
+- **Size.** `-o` writes one file of at most 10 GB (`--max-file-size`), the largest PST Purview eDiscovery exports
+  write; a larger mailbox needs `--output-dir`.
+- **Disk.** The decoded messages are staged in a private temporary directory (`--temp-dir`), which needs about as
+  much free space as the input and is removed when the conversion ends.
+- **Stopping.** Stopped by Ctrl-C (on Unix also SIGTERM, SIGQUIT or SIGHUP), `convert` removes what it created and
+  its staging directory (a signal after the last file is complete keeps the files). A second Ctrl-C ends it at once
+  and leaves them, as does a kill that cannot be caught (SIGKILL, an out-of-memory kill) and, on Windows, Ctrl-Break
+  or closing the console window. A signal ignored when it starts (`nohup`) stays ignored.
+
+`pstsmith --help` lists every option and the exit codes.
 
 **Rust**
 
@@ -168,6 +172,7 @@ documentation we could not check on that point. Corrections are welcome.
 ## Documentation
 
 - [docs.rs/pstsmith](https://docs.rs/pstsmith): the library API.
+- [The command line](crates/pstsmith-cli/README.md) and [the npm package](packages/pstsmith-node/README.md).
 - [docs/VERIFICATION.md](docs/VERIFICATION.md): what was checked, how, and the known limits.
 - [docs/MANIFEST.md](docs/MANIFEST.md): the JSONL input and result formats.
 - [docs/UPSTREAM.md](docs/UPSTREAM.md): how pstsmith relates to its upstream projects.

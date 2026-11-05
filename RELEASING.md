@@ -5,6 +5,13 @@ with attested binaries, the npm packages `pstsmith` and `@pstsmith/<platform>`, 
 
 ## One-time setup
 
+0. Going public: set the repository's About (description "Convert EML, MBOX and Maildir mail to Outlook PST files,
+   and read, create and append PSTs, without Outlook: a Rust library, a command line and an npm package"; topics
+   `pst`, `outlook`, `email`, `eml`, `mbox`, `maildir`, `email-archiving`, `ediscovery`, `rust`, `cli`; website
+   `https://docs.rs/pstsmith` once the crate is published), enable Discussions (SUPPORT.md points to them) and
+   private vulnerability reporting (Settings > Security; SECURITY.md and CODE_OF_CONDUCT.md point to it). The
+   crates.io, docs.rs and npm badges and the install commands in the README work once 0.1.0 is published, so publish
+   right after.
 1. crates.io: publish 0.1.0 by hand from a clean checkout (`cargo publish -p pstsmith`, then `cargo publish -p
    pstsmith-cli`), then add this repository as a trusted publisher of both crates (crates.io > crate > Settings >
    Trusted Publishing: workflow `release-plz.yml`, environment `release`).
