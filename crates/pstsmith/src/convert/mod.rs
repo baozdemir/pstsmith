@@ -136,6 +136,11 @@ impl From<manifest::Failure> for ConvertError {
 /// A [`ConvertError`] for invalid input, an existing output path, an attachment that does not match its recorded size
 /// or hash, or a writer or I/O failure. Everything this call created is removed first.
 pub fn convert_manifest(manifest: &Path, output: &Output, options: &ManifestOptions) -> Result<Report, ConvertError> {
+    convert_manifest_until(manifest, output, options, None)
+}
+
+/// As [`convert_manifest`]; once `cancel` is true, it stops before the next item with `interrupted`.
+pub(crate) fn convert_manifest_until(manifest: &Path, output: &Output, options: &ManifestOptions, cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>) -> Result<Report, ConvertError> {
     if options.batch_items == 0 || options.batch_bytes == 0 {
         return Err(ConvertError { code: "usage", exit_code: 2, item_key: None, detail: "batch limits must be positive".into() });
     }
@@ -149,6 +154,7 @@ pub fn convert_manifest(manifest: &Path, output: &Output, options: &ManifestOpti
         excluded: options.excluded.clone(),
         batch_items: options.batch_items,
         batch_bytes: options.batch_bytes,
+        cancel,
     };
     Ok(Report { line: manifest::run(&options)?, warnings: Vec::new() })
 }

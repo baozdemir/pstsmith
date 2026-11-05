@@ -32,12 +32,12 @@ name, which is the output file's name.
 | **Microsoft 365 import** (Microsoft Purview, network upload of the 20-file kit into a test tenant's mailbox) | Purview's analysis accepted all 20 files (0 corrupt, 0 analysis failures); every import request transferred the messages Outlook reads from its file (1,171 in all), 0 bad items. Exchange Online held back only what its limits forbid: three 67 MB messages (default receive size 36 MB) and one message with 4,200 named properties (see "Known limits") |
 | Microsoft Graph comparison of the imported mailbox with the source | 1,167 messages compared field by field (sender, recipients, read flag, importance, attachments and their bytes, bodies); every difference is explained: Exchange's own handling (a 777-character subject cut to its 255-character limit, an image's alt text in the rendered body, folders differing only in case renamed), the comparison's own baseline (Outlook's object model cannot read the encrypted S/MIME items, so those were compared with the source), or the report subjects described under "Known limits" |
 | **Two independent readers** (libpff and XstReader) against the manifests, field by field | 202 of 202 campaign cases |
-| **Appending to files Outlook wrote** | Microsoft's `sample1.pst` and four PSTs classic Outlook wrote (empty; folders only; 23 items of many classes; 9 messages): after appends by this writer, the structural checks below pass and libpff lists Outlook's own items unchanged plus the new ones. On an earlier writer version, SCANPST found only minor inconsistencies in Outlook's two new PSTs after the append, with logs equal to those of Outlook's own files, and classic Outlook opened every appended message; SCANPST and Outlook were not rerun on this version |
+| **Appending to files Outlook wrote** | Microsoft's `sample1.pst` and four PSTs classic Outlook wrote (empty; folders only; 23 items of many classes; 9 messages): after appends by this writer, pstsmith-check's reference and table checks and a heap audit pass and libpff lists Outlook's own items unchanged plus the new ones. On an earlier writer version, SCANPST found only minor inconsistencies in Outlook's two new PSTs after the append, with logs equal to those of Outlook's own files, and classic Outlook opened every appended message; SCANPST and Outlook were not rerun on this version |
 | **Crash safety**: a replay of every on-disk state a crash could leave during real conversions (64 and 1,060 states) | 0 violations: every state opens as the last committed one; the replay's controls still catch planted violations |
 | **Out of space** (ENOSPC) on ext4, xfs and tmpfs | 12 of 12 cases refused cleanly, no partial output left |
 | **Same bytes on every platform** | the corpus outputs are byte-identical on macOS arm64, Linux arm64 and Linux x86-64 |
 | **Memory** (peak RSS of the converter, macOS) | 17.2 MB at 128,000 items in one folder; 13.0 MB for 32,000 items in 1,024 folders; 6.5 MB for an export with a 6 GiB attachment. Growth is bounded by caches with named caps in the code |
-| Four independent code reviews | every defect found fixed, each fix with a test that fails on the code before it; two notes (a wording, a deployment condition) recorded as documented conditions |
+| Four independent code reviews | every defect found fixed, each fix with a test that fails on the code before it; a few findings kept as measured bounds or documented conditions instead |
 
 ## Recorded checks of the mail input (November 2026)
 
@@ -60,12 +60,12 @@ the manifest conversion's path unchanged, so the writer checks above apply to it
   a recipient without an address (it stays in the original headers).
 - **Folder names are used as the file system gives them,** without Unicode normalization: a name stored decomposed
   (NFD, as some macOS tools write it) and the same name composed (NFC) become two folders.
-- **One file holds at most 10 GB** (`--max-file-size`, the largest PST Microsoft's own exports write); `--output-dir`
+- **One file holds at most 10 GB** (`--max-file-size`, the largest PST Purview eDiscovery exports write); `--output-dir`
   writes as many parts as needed.
-- **A conversion killed in a way it cannot catch** (SIGKILL, an out-of-memory kill) leaves its staging directory, which
-  holds decoded mail, and its partial output behind. A failure removes both, and so does `pstsmith convert` when it is
-  stopped by Ctrl-C, SIGTERM or SIGHUP. A library caller that handles signals removes `Converter::staging_dir`
-  itself.
+- **A conversion killed in a way it cannot catch** (SIGKILL, an out-of-memory kill), or stopped by a second Ctrl-C,
+  leaves its staging directory, which holds decoded mail, and its partial output behind. A failure removes both, and
+  so does `pstsmith convert` when it is stopped by Ctrl-C (on Unix also SIGTERM, SIGQUIT or SIGHUP); on Windows only
+  Ctrl-C is handled. A library caller stops a conversion with `Converter::set_cancel_flag`.
 - **Microsoft 365 import limits seen in the test above,** which apply to any PST:
   - Exchange Online's default maximum receive size is 36 MB (at most 150 MB); larger items are skipped by the import.
   - A mailbox has a quota of named properties (16,384 in all; 3,277 per custom namespace or in PS_PUBLIC_STRINGS;

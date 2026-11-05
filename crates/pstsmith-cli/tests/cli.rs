@@ -98,43 +98,101 @@ fn cli_help_and_version() {
     assert_eq!(String::from_utf8_lossy(&version.stdout).trim(), format!("pstsmith {}", env!("CARGO_PKG_VERSION")));
 }
 
-/// A conversion stopped by SIGTERM, SIGINT (Ctrl-C) or SIGHUP removes what it wrote: the staging directory, which holds
-/// decoded mail, and the partial output, which would look like a complete PST with fewer messages.
+/// Writes an MBOX large enough that a conversion of it is still running when a test stops it.
 #[cfg(unix)]
-#[test]
-fn a_stopped_convert_removes_its_staging_and_output() {
+fn big_mbox(path: &std::path::Path) {
     use std::io::Write;
-    let dir = temp_dir("convert-stopped");
-    let mbox = dir.join("Big.mbox");
-    let mut file = std::io::BufWriter::new(std::fs::File::create(&mbox).unwrap());
+    let mut file = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
     for index in 0..60_000 {
         write!(file, "From a Mon Jan  1 10:00:00 2024\nFrom: a@example.invalid\nSubject: message {index}\n\nbody {index}\n\n").unwrap();
     }
-    drop(file);
+}
+
+/// Starts `pstsmith convert MBOX -o OUTPUT --temp-dir STAGING` (through `sh -c` with `prefix` before it) and returns it
+/// once it has staged some mail.
+#[cfg(unix)]
+fn start_convert(prefix: &str, mbox: &std::path::Path, output: &std::path::Path, staging: &std::path::Path) -> std::process::Child {
+    let script = format!("{prefix} exec \"$0\" convert \"$1\" -o \"$2\" --temp-dir \"$3\"");
+    let child = Command::new("sh")
+        .args(["-c", &script, env!("CARGO_BIN_EXE_pstsmith"), mbox.to_str().unwrap(), output.to_str().unwrap(), staging.to_str().unwrap()])
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let started = std::time::Instant::now();
+    while std::fs::read_dir(staging).unwrap().next().is_none() {
+        assert!(started.elapsed() < std::time::Duration::from_secs(30), "no staging directory appeared");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    child
+}
+
+#[cfg(unix)]
+fn send(child: &std::process::Child, signal: &str) {
+    assert!(Command::new("kill").args([&format!("-{signal}"), &child.id().to_string()]).status().unwrap().success());
+}
+
+/// A conversion stopped by SIGTERM, SIGINT (Ctrl-C), SIGQUIT or SIGHUP removes what it created: the staging
+/// directory, which holds decoded mail, and the partial output, which would look like a complete PST with fewer
+/// messages. Then it ends by that signal, so that a shell loop running it stops too.
+#[cfg(unix)]
+#[test]
+fn a_stopped_convert_removes_its_staging_and_output() {
+    use std::os::unix::process::ExitStatusExt;
+    let dir = temp_dir("convert-stopped");
+    let mbox = dir.join("Big.mbox");
+    big_mbox(&mbox);
     let staging = dir.join("staging");
     std::fs::create_dir(&staging).unwrap();
     let output = dir.join("out.pst");
-    for signal in ["TERM", "INT", "HUP"] {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_pstsmith"))
-            .args(["convert", mbox.to_str().unwrap(), "-o", output.to_str().unwrap(), "--temp-dir", staging.to_str().unwrap()])
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .unwrap();
-        // Wait until the conversion has staged some mail, then stop it.
-        let started = std::time::Instant::now();
-        while std::fs::read_dir(&staging).unwrap().next().is_none() {
-            assert!(started.elapsed() < std::time::Duration::from_secs(30), "no staging directory appeared");
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        assert!(Command::new("kill").args([&format!("-{signal}"), &child.id().to_string()]).status().unwrap().success());
+    for (signal, number) in [("TERM", 15), ("INT", 2), ("QUIT", 3), ("HUP", 1)] {
+        let child = start_convert("", &mbox, &output, &staging);
+        send(&child, signal);
         let result = child.wait_with_output().unwrap();
-        assert!(!result.status.success(), "SIG{signal}: the conversion finished before the signal; make the input larger");
+        assert_eq!(result.status.signal(), Some(number), "SIG{signal}: {:?}", result.status);
         let stderr = String::from_utf8_lossy(&result.stderr);
         assert!(stderr.lines().next().is_some_and(|line| line.contains("\"error\":\"interrupted\"")), "SIG{signal}: {stderr}");
         let left: Vec<_> = std::fs::read_dir(&staging).unwrap().map(|entry| entry.unwrap().path()).collect();
         assert!(left.is_empty(), "SIG{signal}: staging left behind: {left:?}");
         assert!(!output.exists(), "SIG{signal}: a partial output was left behind");
     }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A signal ignored when pstsmith starts stays ignored: under `nohup`, closing the terminal does not stop a conversion.
+#[cfg(unix)]
+#[test]
+fn a_signal_ignored_at_start_does_not_stop_convert() {
+    let dir = temp_dir("convert-nohup");
+    let mbox = dir.join("Big.mbox");
+    big_mbox(&mbox);
+    let staging = dir.join("staging");
+    std::fs::create_dir(&staging).unwrap();
+    let output = dir.join("out.pst");
+    let child = start_convert("trap '' HUP;", &mbox, &output, &staging);
+    send(&child, "HUP");
+    let result = child.wait_with_output().unwrap();
+    assert!(result.status.success(), "{:?}: {}", result.status, String::from_utf8_lossy(&result.stderr));
+    assert!(output.exists());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A stopped conversion removes only what it created: a file another program put at its output path stays.
+#[cfg(unix)]
+#[test]
+fn a_stopped_convert_leaves_files_it_did_not_create() {
+    let dir = temp_dir("convert-foreign");
+    let mbox = dir.join("Big.mbox");
+    big_mbox(&mbox);
+    let staging = dir.join("staging");
+    std::fs::create_dir(&staging).unwrap();
+    let output = dir.join("out.pst");
+    let child = start_convert("", &mbox, &output, &staging);
+    std::fs::write(&output, b"another program's file").unwrap();
+    send(&child, "TERM");
+    let result = child.wait_with_output().unwrap();
+    assert!(!result.status.success());
+    assert_eq!(std::fs::read(&output).unwrap(), b"another program's file");
+    assert_eq!(std::fs::read_dir(&staging).unwrap().count(), 0);
     std::fs::remove_dir_all(&dir).unwrap();
 }

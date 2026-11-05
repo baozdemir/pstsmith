@@ -20,6 +20,9 @@ path = "src/main.rs"
 pstsmith = { path = "../pstsmith", version = "0.1.0" }
 signal-hook = { version = "0.3.18", default-features = false }
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.191"
+
 [features]
 # Tests only: `--max-file-bytes N` sets any file size limit; release builds take the four choices of `--max-file-size`.
 test-file-sizes = []

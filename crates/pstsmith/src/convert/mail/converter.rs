@@ -7,13 +7,14 @@
 
 use super::mime::{message_from_mime, MailItem};
 use super::{sha256_hex, Origin, Stage, Staged};
-use crate::convert::{convert_manifest, ConvertError, ManifestOptions, Output, Report};
+use crate::convert::{convert_manifest_until, ConvertError, ManifestOptions, Output, Report};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 
 /// The Maildir info suffix (`:2,` then the flags, in Maildir++ also `!2,` on systems that forbid colons).
 const MAILDIR_INFO: [&str; 2] = [":2,", "!2,"];
@@ -44,6 +45,7 @@ pub struct Converter {
     expunged: u64,
     skipped_files: u64,
     linked_directories: u64,
+    cancel: Option<Arc<AtomicBool>>,
 }
 
 impl Converter {
@@ -86,14 +88,28 @@ impl Converter {
             expunged: 0,
             skipped_files: 0,
             linked_directories: 0,
+            cancel: None,
         })
     }
 
     /// The private directory this converter stages decoded messages in. [`finish`](Converter::finish) removes it, and
-    /// so does dropping the converter; a process stopped by a signal runs neither, so a caller that handles signals
-    /// removes it itself (the command line does).
+    /// so does dropping the converter.
     pub fn staging_dir(&self) -> &Path {
         &self.staging.dir
+    }
+
+    /// Stops the conversion once `flag` is true, for example from a signal handler: the next message added, or the
+    /// next item [`finish`](Converter::finish) writes, fails with `interrupted`. As on any error, `finish` removes the
+    /// files it created, and dropping the converter removes the staging directory; nothing else is touched.
+    pub fn set_cancel_flag(&mut self, flag: Arc<AtomicBool>) {
+        self.cancel = Some(flag);
+    }
+
+    fn cancelled(&self) -> Result<(), ConvertError> {
+        match &self.cancel {
+            Some(flag) if flag.load(Ordering::SeqCst) => Err(error("interrupted", 130, "the conversion was stopped")),
+            _ => Ok(()),
+        }
     }
 
     /// Adds an input, recognised by what it is:
@@ -193,11 +209,12 @@ impl Converter {
             out.flush()
         };
         write().map_err(io_error)?;
-        let report = convert_manifest(&manifest, &self.output, &self.options)?;
+        let report = convert_manifest_until(&manifest, &self.output, &self.options, self.cancel.clone())?;
         Ok(Report { warnings: std::mem::take(&mut self.warnings), ..report })
     }
 
     fn add_message(&mut self, raw: &[u8], container: &str, folder: &[String], mbox_date: Option<i64>, seen: Option<bool>, draft: bool) -> Result<(), ConvertError> {
+        self.cancelled()?;
         let ordinal = self.ordinals.entry(container.to_string()).or_insert(0);
         *ordinal += 1;
         let origin = Origin { container: container.to_string(), ordinal: *ordinal, mbox_date, seen, draft };
@@ -372,9 +389,9 @@ fn companion_file(name: &str) -> bool {
 
 /// The entries of an MBOX file, read as a stream: each one's bytes (mboxrd: one '>' removed from a quoted "From "
 /// line) and the date of its "From " line. A line starting with "From " starts an entry only when it is the file's
-/// first, when it looks like an MBOX "From " line (a sender, a time and a four-digit year), or when a blank line comes
-/// before it and a header field after it (a date written as in a Date header): an unquoted "From " in a body (mboxo)
-/// does not cut its message.
+/// first, when it looks like an MBOX "From " line (a sender, a time and a four-digit year), or when its date is written
+/// as in a Date header and a blank line comes before it and a header field after it: an unquoted "From " in a body
+/// (mboxo) does not cut its message.
 struct MboxEntries<R> {
     reader: R,
     line: Vec<u8>,
@@ -403,9 +420,12 @@ impl<R: BufRead> MboxEntries<R> {
                     continue;
                 }
             }
-            if self.line.starts_with(b"From ") && (self.first || from_line_date(&self.line).is_some() || self.header_follows_a_blank_line()?) {
+            let date_style = self.line.starts_with(b"From ").then(|| date_header_style(&self.line)).flatten();
+            if self.line.starts_with(b"From ")
+                && (self.first || from_line_date(&self.line).is_some() || (date_style.is_some() && self.header_follows_a_blank_line()?))
+            {
                 self.first = false;
-                let date = from_line_date(&self.line).flatten();
+                let date = from_line_date(&self.line).flatten().or(date_style);
                 if let Some(done) = self.pending.replace((Vec::new(), date)) {
                     return Ok(Some(done));
                 }
@@ -433,6 +453,20 @@ impl<R: BufRead> MboxEntries<R> {
         let name = self.ahead.iter().position(|byte| *byte == b':').map(|at| &self.ahead[..at]);
         Ok(name.is_some_and(|name| !name.is_empty() && name.iter().all(|byte| (33..=126).contains(byte))))
     }
+}
+
+/// A "From " line whose date is written as in a Date header ("From sender Sat, 01 Jan 2024 11:00:00 +0000"): its date,
+/// when the words after the sender have a four-digit year and a time and mail-parser reads them as an RFC 5322 date.
+fn date_header_style(line: &[u8]) -> Option<i64> {
+    let text = std::str::from_utf8(line).ok()?.trim_end();
+    let (_, date) = text.strip_prefix("From ")?.trim_start().split_once(char::is_whitespace)?;
+    let words: Vec<&str> = date.split_whitespace().collect();
+    let year = words.iter().any(|word| word.len() == 4 && word.bytes().all(|byte| byte.is_ascii_digit()));
+    let time = words.iter().any(|word| word.contains(':') && word.bytes().all(|byte| byte.is_ascii_digit() || byte == b':'));
+    if !year || !time {
+        return None;
+    }
+    mail_parser::DateTime::parse_rfc822(date.trim()).filter(mail_parser::DateTime::is_valid).map(|date| date.to_timestamp())
 }
 
 /// An MBOX "From " line's date: `Some(date)` when the line has a sender, a time and a four-digit year at its end
@@ -593,6 +627,15 @@ impl Drop for Staging {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn date_header_style_reads_only_dates() {
+        assert_eq!(date_header_style(b"From a@example.invalid Sat, 01 Jan 2024 11:00:00 +0000\n"), Some(1_704_106_800));
+        assert_eq!(date_header_style(b"From a@example.invalid Mon, 1 Jan 2024 10:00:00 -0500\r\n"), Some(1_704_121_200));
+        for body in ["From 9:00 to 17:00\r\n", "From our website\r\n", "From me 12:30 today\n", "From here on 2024\n", "From a Mon Jan 1\n"] {
+            assert_eq!(date_header_style(body.as_bytes()), None, "{body:?}");
+        }
+    }
 
     #[cfg(unix)]
     #[test]

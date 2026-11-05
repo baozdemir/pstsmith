@@ -536,3 +536,56 @@ fn mbox_from_line_in_a_body_after_a_blank_line_does_not_split() {
     assert_eq!(first_body(&output, &["Body"]), "Line one\r\n\r\nFrom the start, we agreed.\r\nMore text.\r\n");
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn mbox_from_line_in_a_body_before_a_header_like_line_does_not_split() {
+    // A "From " line in a body after a blank line, followed by a line that looks like a header field, starts no
+    // message unless the From line also carries a date: mboxcl stores and hand-made files do not quote such lines.
+    let dir = temp_dir("body-from-header");
+    let first = eml("first").replace("Body of first\r\n", "Hours:\r\n\r\nFrom 9:00 to 17:00\r\nLocation:Room 5\r\n\r\nFrom our website\r\nhttps://example.invalid/page\r\n");
+    let mbox = dir.join("Body.mbox");
+    write(&mbox, format!("From a Mon Jan  1 10:00:00 2024\r\n{first}").as_bytes());
+    let output = dir.join("out.pst");
+    let report = convert(&[&mbox], &output);
+    assert_eq!(report.written(), 1);
+    assert!(first_body(&output, &["Body"]).contains("From our website\r\nhttps://example.invalid/page"));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_stopped_conversion_removes_what_it_created_and_nothing_else() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    let dir = temp_dir("cancel");
+    let staging_parent = dir.join("staging");
+    std::fs::create_dir(&staging_parent).unwrap();
+    // Stopped while staging: the staging directory goes, and a file that appears at the output path (another
+    // program's) stays.
+    let output = dir.join("out.pst");
+    let stop = Arc::new(AtomicBool::new(false));
+    let mut converter = Converter::create_in(Output::File(output.clone()), &ManifestOptions::default(), &staging_parent).unwrap();
+    converter.set_cancel_flag(Arc::clone(&stop));
+    converter.add_eml(&["Inbox"], eml("one").as_bytes()).unwrap();
+    std::fs::write(&output, b"another program's file").unwrap();
+    stop.store(true, Ordering::SeqCst);
+    let error = converter.add_eml(&["Inbox"], eml("two").as_bytes()).unwrap_err();
+    assert_eq!(error.code, "interrupted");
+    drop(converter);
+    assert_eq!(std::fs::read_dir(&staging_parent).unwrap().count(), 0);
+    assert_eq!(std::fs::read(&output).unwrap(), b"another program's file");
+    std::fs::remove_file(&output).unwrap();
+    // Stopped while writing: the parts it created and their directory go.
+    let parts = dir.join("parts");
+    let stop = Arc::new(AtomicBool::new(false));
+    let mut converter = Converter::create_in(Output::Directory(parts.clone()), &ManifestOptions::default(), &staging_parent).unwrap();
+    converter.set_cancel_flag(Arc::clone(&stop));
+    for index in 0..3 {
+        converter.add_eml(&["Inbox"], eml(&format!("message {index}")).as_bytes()).unwrap();
+    }
+    stop.store(true, Ordering::SeqCst);
+    let error = converter.finish().unwrap_err();
+    assert_eq!(error.code, "interrupted");
+    assert!(!parts.exists(), "the parts directory was left behind");
+    assert_eq!(std::fs::read_dir(&staging_parent).unwrap().count(), 0);
+    std::fs::remove_dir_all(&dir).unwrap();
+}

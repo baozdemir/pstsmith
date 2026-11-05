@@ -1,5 +1,6 @@
-# The binaries of a release vX.Y.Z whose GitHub release is still a draft: built from the tag for every target, each
-# archive attested (build provenance) and attached to the draft, which is then published (an immutable release takes
+# The binaries of a release vX.Y.Z whose GitHub release is still a draft: built from the tag for every target, the
+# archives and SHA256SUMS attested (build provenance, in GitHub's attestation store) and attached to the draft, which
+# is then published (an immutable release takes
 # no assets once published); then the npm packages and, when the maintainer has set the HOMEBREW_TAP_TOKEN secret,
 # the Homebrew formula in baozdemir/homebrew-tap. Called only by release-plz.yml (also for the first release), so npm's
 # trusted publishing sees one calling workflow.
@@ -100,7 +101,7 @@ jobs:
       - run: cd dist && sha256sum * > SHA256SUMS
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: dist/pstsmith-*
+          subject-path: dist/*
       - name: Attach to the draft release, then publish it
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -199,4 +200,5 @@ jobs:
           git config user.name "pstsmith release"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Formula/pstsmith.rb
-          git commit -m "pstsmith $TAG" && git push
+          # A re-run finds the formula already there.
+          if git diff --cached --quiet; then echo "the formula is unchanged"; else git commit -m "pstsmith $TAG" && git push; fi

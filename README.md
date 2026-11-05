@@ -68,10 +68,11 @@ pstsmith convert saved/ "Local Folders" -o mixed.pst --json           # a JSON r
 A directory is walked in name order: `.eml` files become a folder per directory, MBOX files and Thunderbird
 `Name.sbd` / Apple Mail `Name.mbox` folders become folders, Maildirs become folders (Maildir++ names in Dovecot's
 modified UTF-7 are decoded). Gmail labels become folders and categories, each message written once. `-o` writes one
-file of at most 10 GB (`--max-file-size`), the largest PST Microsoft's own exports write; a larger mailbox needs
+file of at most 10 GB (`--max-file-size`), the largest PST Purview eDiscovery exports write; a larger mailbox needs
 `--output-dir`. The decoded messages are staged in a private temporary directory (`--temp-dir`), which needs about as
-much free space as the input and is removed when the conversion ends. Stopped by Ctrl-C, SIGTERM or SIGHUP, `convert`
-removes it and its partial output; only a kill that cannot be caught (SIGKILL, an out-of-memory kill) leaves them.
+much free space as the input and is removed when the conversion ends. Stopped by Ctrl-C (on Unix also SIGTERM, SIGQUIT or SIGHUP), `convert` removes
+what it created and its staging directory; a second Ctrl-C ends it at once and leaves them, as does a kill that
+cannot be caught (SIGKILL, an out-of-memory kill). A signal ignored when it starts (`nohup`) stays ignored.
 
 **Rust**
 
@@ -131,8 +132,8 @@ documentation we could not check on that point. Corrections are welcome.
 | [microsoft/outlook-pst-rs][ms] | Rust, none | [✓][ms] | [–][ms] | [–][ms] | [–][ms] | – | – | – | – | not stated |
 | [libpff][pff] | C (Python binding) | [ANSI, Unicode][pff] | [– (requested)][pff-write] | – | – | – | – | – | – | [✓][pff] |
 | [PST Builder][pb] | C#, .NET | [–][pb] | [Unicode][pb] | [– (new parts)][pb] | [–][pb] | [–][pb] | [✓][pb] | [unencoded][pb] | [EML, vCard, iCal, API][pb] | not stated |
-| [imap2pst][i2p] | C++, Linux | – | [Unicode][i2p] | [– (rebuilds)][i2p] | – | [–][i2p] | not stated | [unencoded][i2p] | [IMAP][i2p] | – |
-| [PSTForge][pf] | Rust, Linux, libpff | [via libpff, damaged files too][pf] | [Unicode parts][pf] | [–][pf] | [–][pf] | not stated | not stated | not stated | [PST][pf] | [– in 1.0][pf] |
+| [imap2pst][i2p] | C++, Linux | – | [Unicode][i2p] | [– (rebuilds)][i2p] | – | [–][i2p] | [– (arrive as mail)][i2p] | [unencoded][i2p] | [IMAP][i2p] | – |
+| [PSTForge][pf] | Rust, Linux, libpff | [via libpff, damaged files too][pf] | [Unicode parts][pf] | [–][pf] | [–][pf] | not stated | [claimed: kept from the source PST][pf] | not stated | [PST][pf] | [– in 1.0][pf] |
 | [Aspose.Email][as] | .NET, Java and others | not checked | [Unicode][as-create] | not checked | not checked | [–][as-create] | not checked | not checked | not checked | not checked |
 | [Redemption][rd] (Outlook's MAPI) | COM, Windows with Outlook | [through MAPI][rd] | [Unicode, ANSI][rd-store] | [through MAPI][rd] | [through MAPI][rd] | [✓][rd-store] | not checked | not checked | API | not checked |
 

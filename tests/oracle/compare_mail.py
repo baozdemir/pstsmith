@@ -47,10 +47,23 @@ FROM_LINE = re.compile(rb"^From \S+ .*\d:\d\d.*\b\d{4}\s*$")
 HEADER_FIELD = re.compile(rb"^[\x21-\x39\x3b-\x7e]+:")
 
 
+def date_header_style(line):
+    """Whether a "From " line's words after the sender are a date as in a Date header (a four-digit year, a time, and
+    Python's email.utils reads them)."""
+    words = line.decode("utf-8", "replace").split()[2:]
+    if not any(len(w) == 4 and w.isdigit() for w in words) or not any(":" in w and w.replace(":", "").isdigit() for w in words):
+        return False
+    try:
+        return email.utils.parsedate_to_datetime(" ".join(words)) is not None
+    except (TypeError, ValueError, IndexError):
+        return False
+
+
 def mbox_messages(path):
     """Raw bytes per entry. A "From " line starts an entry when it is the first line (after a byte order mark and blank
-    lines), looks like an MBOX From line (sender, time, four-digit year), or comes after a blank line and before a
-    header field; mboxrd: one '>' removed from a quoted From line; the separating blank line dropped."""
+    lines), looks like an MBOX From line (sender, time, four-digit year), or has a Date-header date and comes after a
+    blank line and before a header field; mboxrd: one '>' removed from a quoted From line; the separating blank line
+    dropped."""
     data = path.read_bytes()
     if data.startswith(b"\xef\xbb\xbf"):
         data = data[3:]
@@ -60,7 +73,7 @@ def mbox_messages(path):
     for index, line in enumerate(lines):
         after_blank = current is not None and current[0].endswith((b"\n\n", b"\n\r\n"))
         before_header = index + 1 < len(lines) and HEADER_FIELD.match(lines[index + 1])
-        if line.startswith(b"From ") and (current is None or FROM_LINE.match(line.rstrip(b"\r\n")) or (after_blank and before_header)):
+        if line.startswith(b"From ") and (current is None or FROM_LINE.match(line.rstrip(b"\r\n")) or (after_blank and before_header and date_header_style(line))):
             if current is not None:
                 out.append(current)
             current = [b""]

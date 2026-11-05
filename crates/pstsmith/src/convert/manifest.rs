@@ -863,6 +863,8 @@ pub(crate) struct Options {
     pub(crate) excluded: Option<PathBuf>,
     pub(crate) batch_items: usize,
     pub(crate) batch_bytes: usize,
+    /// Once true, the conversion stops before its next item with `interrupted`, and what it created is removed.
+    pub(crate) cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 fn decode_search_key(item: &ItemV1) -> Result<[u8; 16], Failure> {
@@ -1936,6 +1938,9 @@ fn convert_items(options: &Options, reader: &mut ManifestReader, sink: &mut Sink
     let payload_cap = if directory { sink.limit.map(|limit| limit / 64) } else { None };
     let mut used: BTreeSet<Vec<String>> = BTreeSet::new();
     while let Some(line) = reader.next_line()? {
+        if options.cancel.as_ref().is_some_and(|stop| stop.load(std::sync::atomic::Ordering::SeqCst)) {
+            return Err(Failure::new("interrupted", 130, None, "the conversion was stopped"));
+        }
         line_number += 1;
         let line = line.trim_end_matches(['\r', '\n']);
         if line.trim().is_empty() {

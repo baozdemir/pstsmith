@@ -3,9 +3,9 @@
 //! `pstsmith convert INPUT...` converts EML files, MBOX files, Maildir directories and Thunderbird or Apple Mail folders
 //! (see [`pstsmith::convert::mail::Converter::add_path`]); a human-readable summary goes to stderr, and with `--json`
 //! the `pst-export-result/1` line to stdout. Its warnings name the item concerned by its input path, for the person
-//! running the command; the manifest mode below writes no file names. Stopped by SIGTERM, SIGINT (Ctrl-C) or SIGHUP,
-//! convert removes its staging directory and partial output and exits with 128 plus the signal's number; the manifest
-//! mode keeps the default signal behaviour.
+//! running the command; the manifest mode below writes no file names. Stopped by SIGINT (Ctrl-C), SIGTERM, SIGQUIT or
+//! SIGHUP, convert removes what it created and its staging directory, prints an `interrupted` error line and ends by
+//! that signal ([`Stop`]); the manifest mode keeps the default signal behaviour.
 //!
 //! `pstsmith --manifest FILE` converts a JSONL manifest of mail items into one PST file or size-limited parts:
 //!
@@ -30,8 +30,8 @@ static COUNTING: pstsmith::measurement::heap::Counting = pstsmith::measurement::
 use pstsmith::convert::mail::Converter;
 use pstsmith::convert::{convert_manifest, ConvertError, ManifestOptions, Output, Report, FILE_SIZE_CHOICES};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
-use std::{env, fs, io, path::PathBuf, process::ExitCode, thread, time::Duration};
+use std::sync::Arc;
+use std::{env, path::PathBuf, process::ExitCode};
 
 const HELP: &str = "\
 pstsmith: read, create and append PST files without Outlook
@@ -47,7 +47,7 @@ Options:
   -o, --output FILE        write one PST file of at most --max-file-size (it must not exist)
   --output-dir DIR         write parts export-0001.pst, export-0002.pst, ... into a new directory
   --max-file-size SIZE     largest file or part: 1GB, 2GB, 5GB or 10GB (default 10GB, the largest PST
-                           Microsoft's own exports write); a larger mailbox needs --output-dir
+                           Purview eDiscovery exports write); a larger mailbox needs --output-dir
   --excluded PATH          record items that cannot be written faithfully here instead of failing
   --temp-dir DIR           where convert stages the decoded messages (default: the system temporary directory)
   --json                   print the pst-export-result/1 line on stdout (convert)
@@ -57,7 +57,9 @@ Options:
   -V, --version            print the version
 
 Exit codes: 0 converted; 2 invalid input or usage; 3 an attachment does not match its recorded size or hash;
-4 an output path exists; 5 a writer or I/O failure. An error is the first line on stderr, as JSON.
+4 an output path exists; 5 a writer or I/O failure. An error is the first line on stderr, as JSON. convert stopped
+by Ctrl-C (on Unix also SIGTERM, SIGQUIT or SIGHUP) removes what it wrote, prints the error interrupted and ends by
+that signal (exit status 128 plus its number); a second Ctrl-C ends it at once.
 ";
 
 struct Options {
@@ -205,24 +207,19 @@ fn convert_main(args: Vec<String>) -> ExitCode {
         Ok(options) => options,
         Err(error) => return fail(error),
     };
-    let converter = match &options.temp_dir {
-        Some(dir) => Converter::create_in(options.output.clone(), &options.manifest_options, dir),
-        None => Converter::create(options.output.clone(), &options.manifest_options),
-    };
-    let mut converter = match converter {
-        Ok(converter) => converter,
-        Err(error) => return fail(error),
-    };
-    let over = stop_on_signal(&converter, &options);
-    let run = move || -> Result<Report, ConvertError> {
+    let stop = Stop::install();
+    let run = || -> Result<Report, ConvertError> {
+        let mut converter = match &options.temp_dir {
+            Some(dir) => Converter::create_in(options.output.clone(), &options.manifest_options, dir)?,
+            None => Converter::create(options.output.clone(), &options.manifest_options)?,
+        };
+        converter.set_cancel_flag(Arc::clone(&stop.flag));
         for input in &options.inputs {
             converter.add_path(input)?;
         }
         converter.finish()
     };
     let result = run();
-    // From here a signal removes nothing: the conversion is over, and its own cleanup has run if it failed.
-    *over.lock().unwrap_or_else(PoisonError::into_inner) = true;
     match result {
         Ok(report) => {
             let outputs = report.outputs();
@@ -239,6 +236,9 @@ fn convert_main(args: Vec<String>) -> ExitCode {
             if options.json {
                 println!("{}", report.result_line());
             }
+            // A signal that came after the last item: the files are complete and stay, but the process still ends
+            // by the signal, so that a shell loop running it stops.
+            stop.end_by_signal();
             ExitCode::SUCCESS
         }
         Err(error) => {
@@ -248,80 +248,66 @@ fn convert_main(args: Vec<String>) -> ExitCode {
             if let Some(hint) = hint {
                 eprintln!("{hint}");
             }
+            stop.end_by_signal();
             code
         }
     }
 }
 
-/// Stops a conversion on SIGTERM, SIGINT (Ctrl-C) and, on Unix, SIGHUP: removes the staging directory, which holds
-/// decoded mail, and what the conversion wrote (its output and exclusion record did not exist before it started:
-/// `Converter::create` refuses existing paths), prints the error line and exits with 128 plus the signal's number. A
-/// second signal ends the process at once. Returns the flag the conversion sets, under its lock, when it is over;
-/// a signal after that removes nothing. A kill that cannot be caught (SIGKILL, an out-of-memory kill) still leaves
-/// the files behind.
-fn stop_on_signal(converter: &Converter, options: &ConvertOptions) -> Arc<Mutex<bool>> {
-    let over = Arc::new(Mutex::new(false));
-    let stopping = Arc::new(AtomicBool::new(false));
-    let signal = Arc::new(AtomicUsize::new(0));
-    #[cfg(unix)]
-    let signals = [signal_hook::consts::TERM_SIGNALS, &[signal_hook::consts::SIGHUP]].concat();
-    #[cfg(not(unix))]
-    let signals = signal_hook::consts::TERM_SIGNALS.to_vec();
-    for number in signals {
-        // In this order: the first signal finds `stopping` false and sets it, a second one exits.
-        let _ = signal_hook::flag::register_conditional_shutdown(number, 128 + number, Arc::clone(&stopping));
-        let _ = signal_hook::flag::register(number, Arc::clone(&stopping));
-        let _ = signal_hook::flag::register_usize(number, Arc::clone(&signal), number as usize);
-    }
-    let output = match &options.output {
-        Output::File(path) | Output::Directory(path) => path.clone(),
-    };
-    let created: Vec<PathBuf> = [Some(converter.staging_dir().to_path_buf()), Some(output), options.manifest_options.excluded.clone()]
-        .into_iter()
-        .flatten()
-        .collect();
-    let watched = Arc::clone(&over);
-    thread::spawn(move || loop {
-        let number = signal.load(Ordering::SeqCst);
-        let over = watched.lock().unwrap_or_else(PoisonError::into_inner);
-        if *over {
-            return;
-        }
-        if number != 0 {
-            // `over` stays locked until the exit, so the conversion cannot finish in between.
-            for path in &created {
-                remove_created(path);
-            }
-            let error = ConvertError {
-                code: "interrupted",
-                exit_code: (128 + number).min(255) as u8,
-                item_key: None,
-                detail: format!("stopped by signal {number}; the staging directory and the partial output were removed"),
-            };
-            eprintln!("{}", error.error_line());
-            std::process::exit(128 + number as i32);
-        }
-        drop(over);
-        thread::sleep(Duration::from_millis(20));
-    });
-    over
+/// Stops a conversion on SIGTERM, SIGINT (Ctrl-C), SIGQUIT and SIGHUP (on Windows: Ctrl-C). The signal sets the
+/// converter's cancel flag: the conversion fails with `interrupted` before its next message or item and, as on any
+/// error, removes what it created and its staging directory; nothing it did not create is touched. Then the process
+/// ends by the same signal, as if it had not been caught, so that a shell loop stops too. A second signal ends the
+/// process at once, without that cleanup. A signal ignored when pstsmith starts (`nohup`, a background job of a
+/// script) stays ignored.
+struct Stop {
+    flag: Arc<AtomicBool>,
+    signal: Arc<AtomicUsize>,
 }
 
-/// Removes a file or directory the stopped conversion created. The conversion keeps running until the exit and may
-/// add a file meanwhile, so the removal is tried again for up to a second.
-fn remove_created(path: &PathBuf) {
-    for _ in 0..50 {
-        let removed = match fs::symlink_metadata(path) {
-            Ok(metadata) if metadata.is_dir() => fs::remove_dir_all(path),
-            Ok(_) => fs::remove_file(path),
-            Err(error) => Err(error),
-        };
-        match removed {
-            Ok(()) => return,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return,
-            Err(_) => thread::sleep(Duration::from_millis(20)),
+impl Stop {
+    fn install() -> Self {
+        let stop = Self { flag: Arc::new(AtomicBool::new(false)), signal: Arc::new(AtomicUsize::new(0)) };
+        #[cfg(unix)]
+        let signals = [signal_hook::consts::TERM_SIGNALS, &[signal_hook::consts::SIGHUP]].concat();
+        #[cfg(not(unix))]
+        let signals = signal_hook::consts::TERM_SIGNALS.to_vec();
+        for number in signals {
+            if ignored_at_start(number) {
+                continue;
+            }
+            // In this order: the first signal finds the flag false and sets it, a second one exits.
+            let _ = signal_hook::flag::register_conditional_shutdown(number, 128 + number, Arc::clone(&stop.flag));
+            let _ = signal_hook::flag::register(number, Arc::clone(&stop.flag));
+            let _ = signal_hook::flag::register_usize(number, Arc::clone(&stop.signal), number as usize);
+        }
+        stop
+    }
+
+    /// Ends the process by the signal that stopped it, if one came.
+    fn end_by_signal(&self) {
+        let number = self.signal.load(Ordering::SeqCst);
+        if number != 0 {
+            let _ = signal_hook::low_level::emulate_default_handler(number as i32);
+            std::process::exit(128 + number as i32);
         }
     }
+}
+
+/// Whether a signal is ignored (SIG_IGN) as the process starts, as `nohup` and shells running background jobs leave
+/// it; such a signal must stay ignored.
+#[cfg(unix)]
+fn ignored_at_start(signal: i32) -> bool {
+    // SAFETY: with a null new action, sigaction only reads the current one into `old`, which it fully writes.
+    unsafe {
+        let mut old: libc::sigaction = std::mem::zeroed();
+        libc::sigaction(signal, std::ptr::null(), &mut old) == 0 && old.sa_sigaction == libc::SIG_IGN
+    }
+}
+
+#[cfg(not(unix))]
+fn ignored_at_start(_signal: i32) -> bool {
+    false
 }
 
 /// What to do next, for a convert error a person can act on.

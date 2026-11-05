@@ -22,7 +22,7 @@ try {
 }
 ```
 
-`output: { file }` writes one PST file of at most 10 GB, the largest PST Microsoft's own exports write;
+`output: { file }` writes one PST file of at most 10 GB, the largest PST Purview eDiscovery exports write;
 `output: { dir }` writes as many parts as needed, each at most `maxFileSize`. `convertManifest({ manifest, output })` converts a
 JSONL manifest of messages
 ([format](https://github.com/baozdemir/pstsmith/blob/main/docs/MANIFEST.md)).
