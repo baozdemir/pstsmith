@@ -1,0 +1,16 @@
+name: Feature request
+description: Something pstsmith should read, write or do.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you need
+      description: The task you want to do, and where pstsmith stops you today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: How it could work
+      description: Optional. A command, an API, a format.

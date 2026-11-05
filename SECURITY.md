@@ -1,0 +1,24 @@
+# Security policy
+
+pstsmith reads files that may come from anyone (PST, EML, MBOX), so a crash, hang, unbounded memory use or wrong
+write on hostile input is a security issue, as is anything that lets one input change another's output.
+
+## Reporting a vulnerability
+
+Please report it privately through [GitHub's private vulnerability reporting](https://github.com/baozdemir/pstsmith/security/advisories/new),
+not in a public issue. Include the version, the platform, and a synthetic input that shows the problem (never a real
+mailbox). You will get an answer within 14 days, and a fix or a plan with a date after the problem is confirmed.
+Reporters are credited in the advisory unless they ask not to be.
+
+## Supported versions
+
+| Version | Supported |
+|---|---|
+| 0.1.x | yes |
+
+## What pstsmith does to stay safe
+
+- No `unsafe` code in the conversion pipeline. The nesting of attached e-mails is capped at 32 levels, MIME trees are
+  walked and dropped without recursion, and memory grows with the largest single message, not with the input.
+- The staging directory of a mail conversion is private to the user (0700 on Unix) and removed afterwards.
+- Every release binary carries a build provenance attestation (`gh attestation verify`).
