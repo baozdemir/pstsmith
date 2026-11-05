@@ -217,7 +217,7 @@ impl Converter {
             self.folders.insert(folder[..depth].to_vec());
         }
         let file = File::open(path).map_err(|e| unreadable(path, e))?;
-        let mut entries = MboxEntries { reader: BufReader::new(file), line: Vec::new(), pending: None, first: true };
+        let mut entries = MboxEntries { reader: BufReader::new(file), line: Vec::new(), ahead: Vec::new(), pending: None, first: true };
         while let Some(entry) = entries.next_entry().map_err(|e| unreadable(path, e))? {
             let (raw, date) = entry;
             let raw = without_separator_line(&raw);
@@ -365,11 +365,14 @@ fn companion_file(name: &str) -> bool {
 
 /// The entries of an MBOX file, read as a stream: each one's bytes (mboxrd: one '>' removed from a quoted "From "
 /// line) and the date of its "From " line. A line starting with "From " starts an entry only when it is the file's
-/// first, or when it looks like an MBOX "From " line (a sender, a time and a four-digit year): an unquoted "From " in
-/// a body (mboxo) does not cut its message.
+/// first, when it looks like an MBOX "From " line (a sender, a time and a four-digit year), or when a blank line comes
+/// before it and a header field after it (a date written as in a Date header): an unquoted "From " in a body (mboxo)
+/// does not cut its message.
 struct MboxEntries<R> {
     reader: R,
     line: Vec<u8>,
+    /// The line after a "From " line, read ahead to see whether it is a header field; the next line to take.
+    ahead: Vec<u8>,
     pending: Option<(Vec<u8>, Option<i64>)>,
     first: bool,
 }
@@ -378,21 +381,24 @@ impl<R: BufRead> MboxEntries<R> {
     fn next_entry(&mut self) -> io::Result<Option<(Vec<u8>, Option<i64>)>> {
         loop {
             self.line.clear();
-            if self.reader.read_until(b'\n', &mut self.line)? == 0 {
-                return Ok(self.pending.take());
-            }
-            let mut line: &[u8] = &self.line;
-            if self.first {
-                if let Some(rest) = line.strip_prefix(b"\xEF\xBB\xBF") {
-                    line = rest;
+            if self.ahead.is_empty() {
+                if self.reader.read_until(b'\n', &mut self.line)? == 0 {
+                    return Ok(self.pending.take());
                 }
-                if line == b"\n" || line == b"\r\n" {
+            } else {
+                std::mem::swap(&mut self.line, &mut self.ahead);
+            }
+            if self.first {
+                if self.line.starts_with(b"\xEF\xBB\xBF") {
+                    self.line.drain(..3);
+                }
+                if self.line == b"\n" || self.line == b"\r\n" {
                     continue;
                 }
             }
-            if line.starts_with(b"From ") && (self.first || from_line_date(line).is_some()) {
+            if self.line.starts_with(b"From ") && (self.first || from_line_date(&self.line).is_some() || self.header_follows_a_blank_line()?) {
                 self.first = false;
-                let date = from_line_date(line).flatten();
+                let date = from_line_date(&self.line).flatten();
                 if let Some(done) = self.pending.replace((Vec::new(), date)) {
                     return Ok(Some(done));
                 }
@@ -400,10 +406,25 @@ impl<R: BufRead> MboxEntries<R> {
             }
             self.first = false;
             if let Some((contents, _)) = self.pending.as_mut() {
+                let line = &self.line;
                 let quoted = line.iter().position(|byte| *byte != b'>').is_some_and(|at| at > 0 && line[at..].starts_with(b"From "));
                 contents.extend_from_slice(if quoted { &line[1..] } else { line });
             }
         }
+    }
+
+    /// For a "From " line whose date is not in the usual form: whether a blank line ends the entry before it and the
+    /// line after it is a header field. That line is read ahead (here `ahead` is always empty: the line in hand is the
+    /// one read ahead before, if any) and is taken next.
+    fn header_follows_a_blank_line(&mut self) -> io::Result<bool> {
+        let blank_before = self.pending.as_ref().is_some_and(|(contents, _)| contents.ends_with(b"\n\n") || contents.ends_with(b"\n\r\n"));
+        if !blank_before {
+            return Ok(false);
+        }
+        self.reader.read_until(b'\n', &mut self.ahead)?;
+        // RFC 5322 2.2: a field name is printable US-ASCII without the colon, then the colon.
+        let name = self.ahead.iter().position(|byte| *byte == b':').map(|at| &self.ahead[..at]);
+        Ok(name.is_some_and(|name| !name.is_empty() && name.iter().all(|byte| (33..=126).contains(byte))))
     }
 }
 

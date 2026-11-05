@@ -504,3 +504,35 @@ fn a_symbolic_link_among_maildir_folders_is_not_followed() {
     assert!(report.warnings().iter().any(|warning| warning.contains("symbolic link")), "{:?}", report.warnings());
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn mbox_from_line_with_an_rfc_2822_date_starts_a_message() {
+    // Some exporters write the "From " line's date as in a Date header. After a blank line and before a header field
+    // it starts a message; the second message must not end up in the first one's body.
+    let dir = temp_dir("rfc2822-from");
+    let mbox = dir.join("Export.mbox");
+    let text = format!(
+        "From a@example.invalid Mon Jan  1 10:00:00 2024\n{}\nFrom a@example.invalid Sat, 01 Jan 2024 11:00:00 +0000\n{}\n",
+        eml("one"),
+        eml("two")
+    );
+    write(&mbox, text.as_bytes());
+    let output = dir.join("out.pst");
+    let report = convert(&[&mbox], &output);
+    assert_eq!(report.written(), 2);
+    assert_eq!(tree(&output)[&key(&["Export"])], vec!["one", "two"]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn mbox_from_line_in_a_body_after_a_blank_line_does_not_split() {
+    let dir = temp_dir("body-from");
+    let mbox = dir.join("Body.mbox");
+    let first = eml("first").replace("Body of first\r\n", "Line one\r\n\r\nFrom the start, we agreed.\r\nMore text.\r\n");
+    write(&mbox, format!("From a Mon Jan  1 10:00:00 2024\r\n{first}").as_bytes());
+    let output = dir.join("out.pst");
+    let report = convert(&[&mbox], &output);
+    assert_eq!(report.written(), 1);
+    assert_eq!(first_body(&output, &["Body"]), "Line one\r\n\r\nFrom the start, we agreed.\r\nMore text.\r\n");
+    std::fs::remove_dir_all(&dir).unwrap();
+}

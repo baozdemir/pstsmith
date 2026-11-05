@@ -44,20 +44,23 @@ GMAIL_FOLDERS = [("Inbox", "Inbox"), ("Sent", "Sent Items"), ("Drafts", "Drafts"
 # ---------- the source side: discovery of messages, independent of pstsmith ----------
 
 FROM_LINE = re.compile(rb"^From \S+ .*\d:\d\d.*\b\d{4}\s*$")
+HEADER_FIELD = re.compile(rb"^[\x21-\x39\x3b-\x7e]+:")
 
 
 def mbox_messages(path):
     """Raw bytes per entry. A "From " line starts an entry when it is the first line (after a byte order mark and blank
-    lines) or looks like an MBOX From line (sender, time, four-digit year); mboxrd: one '>' removed from a quoted
-    From line; the separating blank line dropped."""
+    lines), looks like an MBOX From line (sender, time, four-digit year), or comes after a blank line and before a
+    header field; mboxrd: one '>' removed from a quoted From line; the separating blank line dropped."""
     data = path.read_bytes()
     if data.startswith(b"\xef\xbb\xbf"):
         data = data[3:]
     data = data.lstrip(b"\r\n")
     lines = data.splitlines(keepends=True)
     out, current = [], None
-    for line in lines:
-        if line.startswith(b"From ") and (current is None or FROM_LINE.match(line.rstrip(b"\r\n"))):
+    for index, line in enumerate(lines):
+        after_blank = current is not None and current[0].endswith((b"\n\n", b"\n\r\n"))
+        before_header = index + 1 < len(lines) and HEADER_FIELD.match(lines[index + 1])
+        if line.startswith(b"From ") and (current is None or FROM_LINE.match(line.rstrip(b"\r\n")) or (after_blank and before_header)):
             if current is not None:
                 out.append(current)
             current = [b""]
