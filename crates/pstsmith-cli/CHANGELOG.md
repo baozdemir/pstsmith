@@ -9,5 +9,6 @@ All notable changes to the pstsmith command line are recorded here, in the forma
 ### Added
 
 - `pstsmith convert INPUT...` for EML files, MBOX files, Maildir directories and Thunderbird or Apple Mail folders,
-  with `-o`/`--output`, `--output-dir` and `--max-file-size`, `--excluded`, `--temp-dir` and `--json`.
+  with `-o`/`--output`, `--output-dir` and `--max-file-size`, `--excluded`, `--temp-dir` and `--json`. A conversion
+  that does not fit one file says that `--output-dir` writes as many parts as needed.
 - `pstsmith --manifest ITEMS.jsonl` for the JSONL manifest format, `--help` and `--version`.

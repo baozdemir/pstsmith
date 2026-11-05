@@ -16,6 +16,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   Thunderbird, Apple Mail), Maildir and Maildir++ directories, mapped following MS-OXCMAIL: bodies, inline images,
   attachments with their original bytes, attached e-mails, S/MIME as MS-OXOSMIME stores it, delivery and read reports,
   Gmail labels, read and draft state, importance, categories, In-Reply-To and References, the original headers.
+  Maildir++ folder names in IMAP's modified UTF-7 (Dovecot, Courier) are decoded; an MBOX "From " line whose date is
+  written as in a Date header starts a message when a blank line comes before it and a header field after it.
 
 ### Changed
 
