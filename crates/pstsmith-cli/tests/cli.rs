@@ -308,5 +308,13 @@ fn a_relative_mbox_inside_an_apple_mailbox_is_judged_like_its_full_path() {
     run(&mailbox, "mbox", &dir.join("a").join("out.pst"));
     run(&dir, "Clients.mbox/mbox", &dir.join("b").join("out.pst"));
     assert!(std::fs::read(dir.join("a").join("out.pst")).unwrap() == std::fs::read(dir.join("b").join("out.pst")).unwrap(), "the relative input was routed by its labels");
+    // The same file outside an Apple Mail mailbox is routed by its labels, so its output differs: the test sees
+    // routing, not only that both runs agree.
+    let plain = dir.join("plain");
+    std::fs::create_dir_all(&plain).unwrap();
+    std::fs::copy(mailbox.join("mbox"), plain.join("mbox")).unwrap();
+    std::fs::create_dir_all(dir.join("c")).unwrap();
+    run(&plain, "mbox", &dir.join("c").join("out.pst"));
+    assert!(std::fs::read(dir.join("a").join("out.pst")).unwrap() != std::fs::read(dir.join("c").join("out.pst")).unwrap(), "labels did not route outside a mailbox");
     std::fs::remove_dir_all(&dir).unwrap();
 }

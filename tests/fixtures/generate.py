@@ -133,8 +133,14 @@ def mail():
                                                 + eml("CRLF one", "Hours:\n\nFrom 9:00 to 17:00\nLocation:Room 5\n") + "\n"
                                                 "From sender@example.invalid Mon Jan  1 11:00:00 2024\n" + eml("CRLF two") + "\n"
                                                 "From sender@example.invalid Tue, 02 Jan 2024 09:00:00 +0000\n" + eml("CRLF Date-style separator") + "\n"
-                                                # UW c-client and Alpine write the zone after the year.
-                                                "From sender@example.invalid Wed Jan  3 09:00:00 2024 +0100\n" + eml("CRLF zone after the year") + "\n"))
+                                                # UW c-client and Alpine write the zone after the year; System V's %Z
+                                                # (a name, tzdata's "+03", two words) before it; UUCP adds "remote from".
+                                                "From sender@example.invalid Wed Jan  3 09:00:00 2024 +0100\n" + eml("CRLF zone after the year") + "\n"
+                                                "From sender@example.invalid Wed Jan  3 10:00 PST 2024\n" + eml("CRLF System V zone") + "\n"
+                                                "From sender@example.invalid Wed Jan  3 11:00:00 +03 2024\n" + eml("CRLF numeric abbreviation") + "\n"
+                                                "From sender@example.invalid Wed Jan  3 12:00:00 MET DST 2024\n" + eml("CRLF two zone words") + "\n"
+                                                "From sender@example.invalid Wed Jan  3 13:00:00 2024 GMT\n" + eml("CRLF zone name after the year") + "\n"
+                                                "From sender Wed Jan  3 14:00:00 2024 remote from host\n" + eml("CRLF UUCP") + "\n"))
     md = MAIL / "maildir" / "Maildir"
     # Maildir++ also writes "!2," where ':' is not allowed in a file name (Windows); both are read.
     write(md / "cur" / "1704103200.1.host!2,S", eml("Maildir seen"))

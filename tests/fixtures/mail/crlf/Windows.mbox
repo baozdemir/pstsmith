@@ -45,3 +45,58 @@ Content-Type: text/plain; charset=utf-8
 
 Synthetic body.
 
+From sender@example.invalid Wed Jan  3 10:00 PST 2024
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: CRLF System V zone
+Date: Mon, 01 Jan 2024 10:00:00 +0000
+Message-ID: <crlf-system-v-zone@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
+
+From sender@example.invalid Wed Jan  3 11:00:00 +03 2024
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: CRLF numeric abbreviation
+Date: Mon, 01 Jan 2024 10:00:00 +0000
+Message-ID: <crlf-numeric-abbreviation@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
+
+From sender@example.invalid Wed Jan  3 12:00:00 MET DST 2024
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: CRLF two zone words
+Date: Mon, 01 Jan 2024 10:00:00 +0000
+Message-ID: <crlf-two-zone-words@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
+
+From sender@example.invalid Wed Jan  3 13:00:00 2024 GMT
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: CRLF zone name after the year
+Date: Mon, 01 Jan 2024 10:00:00 +0000
+Message-ID: <crlf-zone-name-after-the-year@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
+
+From sender Wed Jan  3 14:00:00 2024 remote from host
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: CRLF UUCP
+Date: Mon, 01 Jan 2024 10:00:00 +0000
+Message-ID: <crlf-uucp@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
+

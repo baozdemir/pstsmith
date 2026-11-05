@@ -84,7 +84,18 @@ def clock(word):
 def zone(word):
     if len(word) == 5 and word[0] in "+-" and digits(word[1:], 4, 4):
         return int(word[1:3]) <= 23 and int(word[3:]) <= 59
-    return 1 <= len(word) <= 5 and all("A" <= c <= "Z" for c in word)
+    return 1 <= len(word) <= 5 and all("A" <= c <= "Z" for c in word) and ascii_lower(word) not in MONTHS
+
+
+def zone_abbreviation(word):
+    """A zone word between the time and the year (System V's %Z): a zone, +hh/-hh, or 1 to 5 letters starting with a
+    capital that are not a month name."""
+    if zone(word):
+        return True
+    if len(word) == 3 and word[0] in "+-" and digits(word[1:], 2, 2):
+        return int(word[1:]) <= 23
+    letters = 1 <= len(word) <= 5 and all("a" <= c <= "z" or "A" <= c <= "Z" for c in word) and "A" <= word[0] <= "Z"
+    return letters and ascii_lower(word) not in MONTHS
 
 
 def date_exists(year, month, day, hour, minute, second):
@@ -132,7 +143,7 @@ def asctime_style(line):
     before = words[:-1]
     zones = 0
     for w in reversed(before):
-        if clock(w) is not None or not zone(w):
+        if clock(w) is not None or not zone_abbreviation(w):
             break
         zones += 1
     if zones > 2 or len(before) < zones + 1:
@@ -193,6 +204,11 @@ ASCTIME_LINES = [
     ("From u Mon Mar 30 10:00:00 MET DST 1998", True),
     ("From MAILER-DAEMON Mon Jan  1 10:00:00 2024", True),
     ("From ???@??? Mon Jan  1 10:00:00 2024", True),
+    ("From user Mon Jan  1 10:00:00 +03 2024", True),
+    ("From user Mon Jan  1 10:00:00 -03 2024", True),
+    ("From user Mon Jan  1 10:00:00 ChST 2024", True),
+    ("From a 10:00:00 2024 JAN", False),
+    ("From x 9:00 2024 MAY", False),
 ]
 
 
@@ -208,7 +224,7 @@ HEADER_FIELD = re.compile(rb"^[\x21-\x39\x3b-\x7e]+:")
 
 def mbox_messages(path):
     """Raw bytes per entry. A "From " line starts an entry when it is the first line (after a byte order mark and blank
-    lines), looks like an MBOX From line (sender, time, four-digit year), or has a Date-header date and comes after a
+    lines), looks like an MBOX From line (asctime_style), or has a Date-header date and comes after a
     blank line and before a header field; mboxrd: one '>' removed from a quoted From line; the separating blank line
     dropped."""
     data = path.read_bytes()
@@ -323,6 +339,10 @@ def source_messages(input_path):
             walk(input_path, [], name, out)
     elif is_mbox(input_path):
         stem = name[:-5] if name.lower().endswith(".mbox") else name
+        parent = input_path.parent.name if input_path.parent.name not in ("", "..") else input_path.parent.resolve().name
+        if name == "mbox" and parent.endswith(".mbox") and len(parent) > 5:
+            # Apple Mail's Name.mbox/mbox is the folder Name.
+            stem = parent[:-5]
         out += [([stem], raw, {"routed": labels_route(input_path)}) for raw in mbox_messages(input_path)]
     else:
         out.append(([input_path.resolve().parent.name], input_path.read_bytes(), {}))

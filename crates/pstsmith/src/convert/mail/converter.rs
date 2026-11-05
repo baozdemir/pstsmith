@@ -160,7 +160,12 @@ impl Converter {
         } else if is_pst(input).map_err(|e| unreadable(input, e))? {
             Err(error("input-unsupported", 2, format!("{}: a PST file is not mail input; pstsmith writes PST files from mail", input.display())))
         } else if is_mbox(input).map_err(|e| unreadable(input, e))? {
-            let folder = vec![mbox_folder_name(&name)];
+            // Apple Mail's `Name.mbox/mbox` is the folder `Name`, as when its directory is walked.
+            let apple = input.parent().map(|parent| if parent.as_os_str().is_empty() { Path::new(".") } else { parent }).and_then(real_name);
+            let folder = match apple.as_deref().and_then(|parent| parent.strip_suffix(".mbox")).filter(|stem| name == "mbox" && !stem.is_empty()) {
+                Some(stem) => vec![stem.to_string()],
+                None => vec![mbox_folder_name(&name)],
+            };
             let routed = labels_route(input);
             self.add_mbox(input, &name, &folder, routed)
         } else {
@@ -435,7 +440,8 @@ fn companion_file(name: &str) -> bool {
 
 /// The entries of an MBOX file, read as a stream: each one's bytes (mboxrd: one '>' removed from a quoted "From "
 /// line) and the date of its "From " line. A line starting with "From " starts an entry only when it is the file's
-/// first, when it looks like an MBOX "From " line (a sender, a time and a four-digit year, see `from_line_date`), or
+/// first, when it looks like an MBOX "From " line (a sender, a month name, and a time just before a four-digit year
+/// or before its zone words, see `from_line_date`), or
 /// when its date is written
 /// as in a Date header and a blank line comes before it and a header field after it: an unquoted "From " in a body
 /// (mboxo) does not cut its message.
@@ -534,14 +540,19 @@ fn clock(word: &str) -> Option<(u8, u8, u8)> {
     Some((parts[0].parse().ok()?, parts[1].parse().ok()?, second))
 }
 
-/// A zone: `+hhmm` or `-hhmm` (hours to 23), or 1 to 5 capital letters (RFC 5322 4.3: UT, GMT, Z and the North
-/// American names have their offsets; any other name is taken as UTC). As (west of GMT, hours, minutes).
+fn is_month(word: &str) -> bool {
+    MONTHS.iter().any(|month| word.eq_ignore_ascii_case(month))
+}
+
+/// A zone: `+hhmm` or `-hhmm` (hours to 23), or 1 to 5 capital letters that are not a month name (RFC 5322 4.3: UT,
+/// GMT, Z and the North American names have their offsets; any other name is taken as UTC). As (west of GMT, hours,
+/// minutes).
 fn zone(word: &str) -> Option<(bool, u8, u8)> {
     if word.len() == 5 && (word.starts_with('+') || word.starts_with('-')) && ascii_digits(&word[1..], 4..=4) {
         let (hours, minutes) = (word[1..3].parse().ok()?, word[3..].parse().ok()?);
         return (hours <= 23 && minutes <= 59).then_some((word.starts_with('-'), hours, minutes));
     }
-    if !(1..=5).contains(&word.len()) || !word.bytes().all(|byte| byte.is_ascii_uppercase()) {
+    if !(1..=5).contains(&word.len()) || !word.bytes().all(|byte| byte.is_ascii_uppercase()) || is_month(word) {
         return None;
     }
     Some(match word {
@@ -558,6 +569,20 @@ fn zone(word: &str) -> Option<(bool, u8, u8)> {
 }
 
 const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+/// A zone word between the time and the year, as System V's `%Z` writes it: a zone, tzdata's numeric abbreviation
+/// `+hh`/`-hh` ("+03"), or 1 to 5 letters starting with a capital that are not a month name ("ChST", taken as UTC).
+fn zone_abbreviation(word: &str) -> Option<(bool, u8, u8)> {
+    if let Some(found) = zone(word) {
+        return Some(found);
+    }
+    if word.len() == 3 && (word.starts_with('+') || word.starts_with('-')) && ascii_digits(&word[1..], 2..=2) {
+        let hours: u8 = word[1..].parse().ok()?;
+        return (hours <= 23).then_some((word.starts_with('-'), hours, 0));
+    }
+    let letters = (1..=5).contains(&word.len()) && word.bytes().all(|byte| byte.is_ascii_alphabetic()) && word.as_bytes()[0].is_ascii_uppercase();
+    (letters && !is_month(word)).then_some((false, 0, 0))
+}
 
 /// The date, when it exists (a real calendar day, year 1900 to 3000, hours to 23, minutes and seconds to 59).
 fn timestamp(year: u16, month: u8, day: u8, (hour, minute, second): (u8, u8, u8), (west, tz_hour, tz_minute): (bool, u8, u8)) -> Option<i64> {
@@ -598,10 +623,10 @@ fn date_header_style(line: &[u8]) -> Option<i64> {
 /// An MBOX "From " line (asctime, as mail programs write it, with an English month name): `Some(date)` when the words
 /// after the sender end with a four-digit year, a month name is among them, and the time comes just before the year
 /// or before one or two zone words before it ("From sender Mon Jan  1 10:00:00 2024", Google Takeout's "... 10:01:00
-/// +0000 2024", System V's "... 10:00 PST 2024", glibc's "... 10:00:00 MET DST 1998"), or just before the year with
-/// a zone after it (UW c-client, Alpine: "... 10:00:00 2024 +0000"); `Some(None)` when its date cannot be read;
-/// `None` when the line is no MBOX "From " line. So a body line such as "From 10:00 to 12:00 on 15 March 2024" is
-/// none.
+/// +0000 2024", System V's "... 10:00 PST 2024" or "... 10:00 +03 2024", mutt's example "... 00:39:12 MET DST 1995"),
+/// or just before the year with a zone after it (UW c-client, Alpine: "... 10:00:00 2024 +0000"); `Some(None)` when
+/// its date cannot be read; `None` when the line is no MBOX "From " line. So a body line such as "From 10:00 to 12:00
+/// on 15 March 2024" is none. Of the zone words, a numeric one gives the offset, else the one next to the year.
 fn from_line_date(line: &[u8]) -> Option<Option<i64>> {
     let mut words = from_line_words(line)?;
     if !words.iter().any(|word| MONTHS.iter().any(|month| word.eq_ignore_ascii_case(month))) {
@@ -617,14 +642,14 @@ fn from_line_date(line: &[u8]) -> Option<Option<i64>> {
     }
     let year: u16 = words.last().filter(|word| ascii_digits(word, 4..=4))?.parse().ok()?;
     let before = &words[..words.len() - 1];
-    let zones = before.iter().rev().take_while(|word| clock(word).is_none() && zone(word).is_some()).count();
+    let zones = before.iter().rev().take_while(|word| clock(word).is_none() && zone_abbreviation(word).is_some()).count();
     if zones > 2 {
         return None;
     }
     let time = clock(before.get(before.len().checked_sub(zones + 1)?)?)?;
-    // A zone just before the year (Takeout's "+0000", System V's "PST") gives the offset.
-    if zones > 0 {
-        tz = zone(&before[before.len() - 1]).unwrap_or(tz);
+    let zone_words = &before[before.len() - zones..];
+    if let Some(word) = zone_words.iter().find(|word| word.starts_with('+') || word.starts_with('-')).or(zone_words.last()) {
+        tz = zone_abbreviation(word).unwrap_or(tz);
     }
     let month = words.iter().find_map(|word| MONTHS.iter().position(|month| word.eq_ignore_ascii_case(month)))?;
     let day = words.iter().find(|word| ascii_digits(word, 1..=2)).and_then(|word| word.parse::<u8>().ok());
@@ -803,7 +828,7 @@ mod tests {
     ];
 
     /// The asctime cases the oracle's self-test holds too.
-    const ASCTIME_LINES: [(&str, bool); 31] = [
+    const ASCTIME_LINES: [(&str, bool); 36] = [
         ("From a Mon Jan  1 10:00:00 2024", true),
         ("From - Mon Jan  1 10:00:00 2024", true),
         ("From 1@xxx Mon Jan 01 10:01:00 +0000 2024", true),
@@ -837,6 +862,12 @@ mod tests {
         ("From u Mon Mar 30 10:00:00 MET DST 1998", true),
         ("From MAILER-DAEMON Mon Jan  1 10:00:00 2024", true),
         ("From ???@??? Mon Jan  1 10:00:00 2024", true),
+        // System V's %Z: tzdata's numeric abbreviations and mixed-case names; a month name is never a zone.
+        ("From user Mon Jan  1 10:00:00 +03 2024", true),
+        ("From user Mon Jan  1 10:00:00 -03 2024", true),
+        ("From user Mon Jan  1 10:00:00 ChST 2024", true),
+        ("From a 10:00:00 2024 JAN", false),
+        ("From x 9:00 2024 MAY", false),
     ];
 
     #[test]
@@ -861,6 +892,9 @@ mod tests {
         assert_eq!(date("From a Mon Jan 01 10:00:00 -0500 2024\n"), Some(Some(1_704_121_200)));
         // A zone name just before the year (System V) gives its offset too.
         assert_eq!(date("From a Mon Jan  1 10:00:00 PST 2024\n"), Some(Some(1_704_132_000)));
+        // tzdata's "+03"; of two zone words, the numeric one gives the offset.
+        assert_eq!(date("From a Mon Jan  1 10:00:00 +03 2024\n"), Some(Some(1_704_092_400)));
+        assert_eq!(date("From a Mon Jan  1 10:00:00 +0100 CET 2024\n"), Some(Some(1_704_099_600)));
         for (line, accepted) in ASCTIME_LINES {
             assert_eq!(from_line_date(line.as_bytes()).is_some(), accepted, "{line:?}");
         }

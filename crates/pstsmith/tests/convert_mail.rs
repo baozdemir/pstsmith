@@ -693,3 +693,14 @@ fn a_missing_exclusion_record_directory_is_named_as_such() {
     assert!(error.detail.starts_with("the exclusion record's directory"), "{}", error.detail);
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn an_apple_mail_mbox_file_given_on_its_own_is_named_after_its_mailbox() {
+    let dir = temp_dir("apple-mbox-file");
+    let file = dir.join("Clients.mbox").join("mbox");
+    write(&file, format!("From a Mon Jan  1 10:00:00 2024\n{}", eml("client")).as_bytes());
+    let output = dir.join("out.pst");
+    convert(&[&file], &output);
+    assert_eq!(tree(&output)[&key(&["Clients"])], vec!["client"]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
