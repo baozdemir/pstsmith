@@ -22,7 +22,9 @@ try {
 }
 ```
 
-`convertManifest({ manifest, output })` converts a JSONL manifest of messages
+`output: { file }` writes one PST file of at most 10 GB, the largest PST Microsoft's own exports write;
+`output: { dir }` writes as many parts as needed, each at most `maxFileSize`. `convertManifest({ manifest, output })` converts a
+JSONL manifest of messages
 ([format](https://github.com/baozdemir/pstsmith/blob/main/docs/MANIFEST.md)).
 
 The conversion runs the prebuilt `pstsmith` binary of your platform (installed as an optional dependency,

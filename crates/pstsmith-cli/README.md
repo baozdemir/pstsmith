@@ -11,7 +11,8 @@ pstsmith --help
 ```
 
 `pstsmith --manifest ITEMS.jsonl --output FILE.pst` converts a JSONL manifest of messages
-([format](https://github.com/baozdemir/pstsmith/blob/main/docs/MANIFEST.md)). Errors are one JSON line on stderr; the
+([format](https://github.com/baozdemir/pstsmith/blob/main/docs/MANIFEST.md)). `-o` writes one file of at most 10 GB
+(`--max-file-size`); `--output-dir` writes as many parts as needed. An error is the first line on stderr, as JSON; the
 exit code says what failed (2 invalid input, 3 an attachment that does not match its recorded size or hash, 4 an output
 that exists, 5 a writer or I/O failure).
 

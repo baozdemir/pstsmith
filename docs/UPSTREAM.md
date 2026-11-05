@@ -101,8 +101,8 @@ v20250520. What classic Outlook for Windows or SCANPST does is an observation of
 - A non-final heap page has no padding allocation: its block is still 8,176 bytes, the page map follows the last
   allocation, zero bytes run to the block's end and count as free. SCANPST reports padding allocations as errors and its
   repair produces this layout. MS-PST 2.3.1.5 speaks of "0 to 63 bytes of padding"; SCANPST's repair leaves up to
-  1,576, and a contents table written over many small commits up to about 2,616, a layout not yet shown to SCANPST
-  or Outlook.
+  1,576, and a contents table written over many small commits up to about 2,616; SCANPST finds only minor
+  inconsistencies in files written so, before and after classic Outlook adds to them (docs/VERIFICATION.md).
 - A heap allocation is at most 3,580 bytes (MS-PST 2.3.1). A larger value is a subnode (2.3.3.3); a larger table cell
   is a NID_TYPE_LTP subnode of its table, named by the cell's HNID (2.3.4.4), in contents, recipient and attachment
   tables.

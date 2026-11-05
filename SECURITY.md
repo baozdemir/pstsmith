@@ -19,6 +19,10 @@ Reporters are credited in the advisory unless they ask not to be.
 ## What pstsmith does to stay safe
 
 - No `unsafe` code in the conversion pipeline. The nesting of attached e-mails is capped at 32 levels, MIME trees are
-  walked and dropped without recursion, and memory grows with the largest single message, not with the input.
-- The staging directory of a mail conversion is private to the user (0700 on Unix) and removed afterwards.
+  walked and dropped without recursion, and memory follows the largest single message (plus a short record per
+  message), not the size of the input.
+- The staging directory of a mail conversion is private to the user (0700 on Unix, files 0600) and removed when the
+  conversion ends, whether it succeeds or fails. A process that is killed (a signal, an out-of-memory kill) cannot
+  remove it: its `pstsmith-*` directory in the temporary directory, holding decoded mail, and any partial output are
+  left behind; remove them.
 - Every release binary carries a build provenance attestation (`gh attestation verify`).

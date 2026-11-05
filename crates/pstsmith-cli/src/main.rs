@@ -53,7 +53,7 @@ Options:
   -V, --version            print the version
 
 Exit codes: 0 converted; 2 invalid input or usage; 3 an attachment does not match its recorded size or hash;
-4 an output path exists; 5 a writer or I/O failure. Errors are one JSON line on stderr.
+4 an output path exists; 5 a writer or I/O failure. An error is the first line on stderr, as JSON.
 ";
 
 struct Options {
