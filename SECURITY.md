@@ -26,6 +26,7 @@ Reporters are credited in the advisory unless they ask not to be.
   is stopped by Ctrl-C (on Unix also SIGTERM, SIGQUIT or SIGHUP). A second Ctrl-C, a kill that cannot be caught
   (SIGKILL, an out-of-memory kill) and, on Windows, Ctrl-Break, closing the console window or ending the process
   leave its `pstsmith-*` directory in the temporary directory, holding decoded mail, and any partial output behind;
-  remove them. SIGQUIT ends it without a core dump. The command line's signal setup is its only `unsafe` code (one
+  remove them. A signal that comes after the last file is complete keeps the files, which are then whole. SIGQUIT
+  ends it without a core dump. The command line's signal setup is its only `unsafe` code (one
   `sigaction` call that reads whether a signal is ignored).
 - Every release binary carries a build provenance attestation (`gh attestation verify`).

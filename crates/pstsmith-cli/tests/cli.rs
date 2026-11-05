@@ -265,3 +265,26 @@ fn a_convert_stopped_with_stderr_closed_still_ends_by_the_signal() {
     assert_eq!(std::fs::read_dir(&staging).unwrap().count(), 0);
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// With stdout gone, `--json` does not panic: the result line is reported as not written (exit 5), after the files are
+/// complete.
+#[cfg(unix)]
+#[test]
+fn a_json_result_with_stdout_closed_is_an_error_not_a_panic() {
+    let dir = temp_dir("convert-json-epipe");
+    let mbox = dir.join("Inbox.mbox");
+    std::fs::write(&mbox, MBOX).unwrap();
+    let output = dir.join("out.pst");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_pstsmith"))
+        .args(["convert", mbox.to_str().unwrap(), "-o", output.to_str().unwrap(), "--json"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    drop(child.stdout.take());
+    let result = child.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert_eq!(result.status.code(), Some(5), "{stderr}");
+    assert!(!stderr.contains("panicked"), "{stderr}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}

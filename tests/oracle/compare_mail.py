@@ -44,44 +44,140 @@ GMAIL_FOLDERS = [("Inbox", "Inbox"), ("Sent", "Sent Items"), ("Drafts", "Drafts"
 
 # ---------- the source side: discovery of messages, independent of pstsmith ----------
 
-FROM_LINE = re.compile(rb"^From \S+ .*\d:\d\d.*\b\d{4}\s*(?: remote from \S+\s*)?$")
-HEADER_FIELD = re.compile(rb"^[\x21-\x39\x3b-\x7e]+:")
+# The two "From " line rules, stated step by step as pstsmith's converter.rs states them (from_line_words, clock, zone,
+# date_header_style, from_line_date), and checked on the same case tables at start (_date_rule_self_test).
+DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
 
 
-DATE_HEADER = re.compile(
-    r"^(?:(?:mon|tue|wed|thu|fri|sat|sun),?\s+)?(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+(\d{4})\s+"
-    r"(\d{2}):(\d{2})(?::(\d{2}))?(?:\s+([+-]\d{4}|ut|gmt|z|est|edt|cst|cdt|mst|mdt|pst|pdt))?(?:\s+\(.*\))?$",
-    re.IGNORECASE)
-MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+def ascii_lower(word):
+    return word.lower() if word.isascii() else word
 
 
-def date_header_style(line):
-    """Whether a "From " line's words after the sender are exactly a Date header's date (RFC 5322 3.3): the grammar
-    pstsmith states in converter.rs `date_header_style`, written here as a regular expression and checked with
-    datetime."""
-    words = line.decode("utf-8", "replace").split()[2:]
-    match = DATE_HEADER.match(" ".join(words))
-    if not match:
-        return False
-    day, month, year, hour, minute, second, zone = match.groups()
-    if not 1900 <= int(year) <= 3000 or int(hour) > 23 or int(minute) > 59 or int(second or 0) > 59:
-        return False
-    if zone and zone[0] in "+-" and int(zone[3:]) > 59:
+def digits(word, low, high):
+    return low <= len(word) <= high and all("0" <= c <= "9" for c in word)
+
+
+def from_line_words(line):
+    """The words after the sender, split on spaces and tabs, without a trailing "remote from host"; None without a
+    sender."""
+    text = line.decode("utf-8", "replace").rstrip("\r\n")
+    if not text.startswith("From "):
+        return None
+    words = [w for w in re.split(r"[ \t]", text[5:]) if w]
+    if not words:
+        return None
+    words = words[1:]
+    if len(words) >= 3 and words[-3] == "remote" and words[-2] == "from":
+        words = words[:-3]
+    return words
+
+
+def clock(word):
+    parts = word.split(":")
+    if not 2 <= len(parts) <= 3 or not digits(parts[0], 1, 2) or any(not digits(p, 2, 2) for p in parts[1:]):
+        return None
+    return int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) == 3 else 0
+
+
+def zone(word):
+    if len(word) == 5 and word[0] in "+-" and digits(word[1:], 4, 4):
+        return int(word[1:3]) <= 23 and int(word[3:]) <= 59
+    return 1 <= len(word) <= 5 and all("A" <= c <= "Z" for c in word)
+
+
+def date_exists(year, month, day, hour, minute, second):
+    if not 1900 <= year <= 3000 or hour > 23 or minute > 59 or second > 59:
         return False
     try:
-        datetime.date(int(year), MONTHS.index(month.lower()) + 1, int(day))
+        datetime.date(year, month, day)
     except ValueError:
         return False
     return True
 
 
+def date_header_style(line):
+    """Whether the words after the sender are exactly [day-of-week[,]] day month year hh:mm[:ss] [zone] [(comment)]."""
+    words = from_line_words(line)
+    if words is None:
+        return False
+    at = next((i for i, w in enumerate(words) if w.startswith("(")), None)
+    if at is not None:
+        if not words[-1].endswith(")"):
+            return False
+        words = words[:at]
+    weekday = bool(words) and ascii_lower(words[0][:-1] if words[0].endswith(",") else words[0]) in DAYS
+    rest = words[1:] if weekday else words
+    if len(rest) not in (4, 5) or not digits(rest[0], 1, 2) or not digits(rest[2], 4, 4):
+        return False
+    if ascii_lower(rest[1]) not in MONTHS:
+        return False
+    time = clock(rest[3])
+    if time is None or (len(rest) == 5 and not zone(rest[4])):
+        return False
+    return date_exists(int(rest[2]), MONTHS.index(ascii_lower(rest[1])) + 1, int(rest[0]), *time)
+
+
+def asctime_style(line):
+    """Whether the words after the sender end with a four-digit year, optionally followed by a zone, and one is a
+    time."""
+    words = from_line_words(line)
+    if words is None:
+        return False
+    if len(words) >= 2 and digits(words[-2], 4, 4) and zone(words[-1]):
+        words = words[:-1]
+    if not words or not digits(words[-1], 4, 4):
+        return False
+    return any(clock(w) is not None for w in words)
+
+
+DATE_HEADER_LINES = [
+    ("From a@example.invalid Sat, 01 Jan 2024 11:00:00 +0000", True),
+    ("From a@example.invalid Mon, 1 Jan 2024 10:00:00 -0500", True),
+    ("From a Sat, 01 Jan 2024 11:00:00", True),
+    ("From a 1 Jan 2024 11:00 GMT", True),
+    ("From a Sat, 01 Jan 2024 11:00:00 +0000 (UTC)", True),
+    ("From a Mon, 1 Jan 2024 12:00:00 UTC", True),
+    ("From a Mon, 1 Jan 2024 12:00:00 CET", True),
+    ("From 9:00 to 17:00", False),
+    ("From our website", False),
+    ("From me 12:30 today", False),
+    ("From here on 2024", False),
+    ("From John Sat, 01 Jan 2024 11:00:00 +0000 wrote:", False),
+    ("From a Sat, 31 Feb 2024 10:00:00 +0000", False),
+    ("From a Mon Jan  1 10:00:00 2024 +0000", False),
+    ("From a Sat, 01 Jan 2024 11:00:00 +2400", False),
+    ("From a Sat,, 01 Jan 2024 11:00:00 +0000", False),
+    ("From a Sat, +1 Jan 2024 11:00:00 +0000", False),
+    ("From a Sat, 01 Jan 2024 11:00:00 gmt", False),
+    ("From a Sat, 01 Jan 1899 11:00:00 +0000", False),
+]
+ASCTIME_LINES = [
+    ("From a Mon Jan  1 10:00:00 2024", True),
+    ("From - Mon Jan  1 10:00:00 2024", True),
+    ("From 1@xxx Mon Jan 01 10:01:00 +0000 2024", True),
+    ("From a Mon Jan  1 10:00:00 2024 +0000", True),
+    ("From a Mon Jan  1 10:00:00 2024 GMT", True),
+    ("From a Mon Jan  1 10:00:00 2024 remote from host", True),
+    ("From me at 12:30 in 2024 too", False),
+    ("From a : 2024", False),
+    ("From a 1:2 2024", False),
+    ("From a Mon Jan 1 10:0 2024", False),
+    ("From a 10:00 -2024", False),
+    ("From 9:00 to 17:00, 2024", False),
+    ("From John Sat, 06 Jan 2024 11:00:00 +0000", False),
+    ("From", False),
+]
+
+
 def _date_rule_self_test():
-    for line, want in [(b"From a Sat, 01 Jan 2024 11:00:00 +0000", True), (b"From a Sat, 01 Jan 2024 11:00:00", True),
-                       (b"From a 1 Jan 2024 11:00 GMT", True), (b"From a Sat, 01 Jan 2024 11:00:00 +0000 (UTC)", True),
-                       (b"From 9:00 to 17:00", False), (b"From our website", False), (b"From me 12:30 today", False),
-                       (b"From John Sat, 01 Jan 2024 11:00:00 +0000 wrote:", False),
-                       (b"From a Sat, 31 Feb 2024 10:00:00 +0000", False), (b"From a Mon Jan  1 10:00:00 2024 +0000", False)]:
-        assert date_header_style(line) == want, line
+    for line, want in DATE_HEADER_LINES:
+        assert date_header_style(line.encode()) == want, line
+    for line, want in ASCTIME_LINES:
+        assert asctime_style(line.encode()) == want, line
+
+
+HEADER_FIELD = re.compile(rb"^[\x21-\x39\x3b-\x7e]+:")
 
 
 def mbox_messages(path):
@@ -98,7 +194,7 @@ def mbox_messages(path):
     for index, line in enumerate(lines):
         after_blank = current is not None and current[0].endswith((b"\n\n", b"\n\r\n"))
         before_header = index + 1 < len(lines) and HEADER_FIELD.match(lines[index + 1])
-        if line.startswith(b"From ") and (current is None or FROM_LINE.match(line.rstrip(b"\r\n")) or (after_blank and before_header and date_header_style(line))):
+        if line.startswith(b"From ") and (current is None or asctime_style(line) or (after_blank and before_header and date_header_style(line))):
             if current is not None:
                 out.append(current)
             current = [b""]
@@ -168,6 +264,14 @@ def maildir_messages(path, folder, prefix, out):
             maildir_messages(entry, sub_path, sub_path, out)
 
 
+def labels_route(path):
+    """Whether an MBOX's Gmail labels choose its messages' folders: not for a mail program's folder (a file beside its
+    Thunderbird .msf index or inside a .sbd directory, Apple Mail's Name.mbox/mbox)."""
+    parent = path.resolve().parent.name
+    return not ((path.parent / (path.name + ".msf")).is_file() or parent.endswith(".sbd")
+                or (path.name == "mbox" and parent.endswith(".mbox")))
+
+
 def source_messages(input_path):
     """[(folder path, raw bytes, flags)] in pstsmith's documented order."""
     out = []
@@ -179,7 +283,7 @@ def source_messages(input_path):
             walk(input_path, [], name, out)
     elif input_path.read_bytes().startswith(b"From "):
         stem = name[:-5] if name.lower().endswith(".mbox") else name
-        out += [([stem], raw, {}) for raw in mbox_messages(input_path)]
+        out += [([stem], raw, {"routed": labels_route(input_path)}) for raw in mbox_messages(input_path)]
     else:
         out.append(([input_path.resolve().parent.name], input_path.read_bytes(), {}))
     return out
@@ -201,7 +305,7 @@ def walk(directory, folder, top, out):
                 out.append((here, entry.read_bytes(), {}))
             elif entry.read_bytes()[:5] == b"From ":
                 target = here if entry.name == "mbox" else folder + [entry.name[:-5] if entry.name.lower().endswith(".mbox") else entry.name]
-                out += [(target, raw, {}) for raw in mbox_messages(entry)]
+                out += [(target, raw, {"routed": labels_route(entry)}) for raw in mbox_messages(entry)]
 
 
 # ---------- what the mapping rules say a message becomes ----------
@@ -228,7 +332,7 @@ def expected(raw, folder, flags):
                 "files": [("message.eml", hashlib.sha256(raw).hexdigest())], "messages": 0, "recipients": [], "read": True}
     labels = str(message.get("X-Gmail-Labels", "") or "")
     label_list = [label.strip().strip('"') for label in labels.split(",") if label.strip()] if labels else []
-    if labels:
+    if labels and flags.get("routed", True):
         folder = [next((outlook for gmail, outlook in GMAIL_FOLDERS if gmail in label_list), "Archive")]
     content_type = message.get_content_type()
     cls, files, messages, body, html = "IPM.Note", [], 0, [], []

@@ -34,3 +34,14 @@ Content-Type: text/plain; charset=utf-8
 
 Synthetic body.
 
+From sender@example.invalid Wed Jan  3 09:00:00 2024 +0100
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: CRLF zone after the year
+Date: Mon, 01 Jan 2024 10:00:00 +0000
+Message-ID: <crlf-zone-after-the-year@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
+

@@ -35,8 +35,10 @@ const MAILDIR_INFO: [&str; 2] = [":2,", "!2,"];
 pub struct Converter {
     output: Output,
     options: ManifestOptions,
-    staging: Staging,
+    // Declared before `staging`: fields drop in order, and on Windows the staging directory can be removed only once
+    // `items.jsonl` in it is closed.
     items: BufWriter<File>,
+    staging: Staging,
     folders: BTreeSet<Vec<String>>,
     /// The next ordinal of each container, so item keys and search keys stay distinct when two inputs share a name.
     ordinals: BTreeMap<String, u64>,
@@ -75,7 +77,7 @@ impl Converter {
             return Err(error("output-exists", 4, "exclusion record path already exists; the caller owns a fresh temporary path"));
         }
         // Found now, not after the whole input is staged.
-        for target in std::iter::once(path).chain(options.excluded.as_ref()) {
+        for (target, what) in std::iter::once((path, "output")).chain(options.excluded.as_ref().map(|path| (path, "exclusion record"))) {
             if let Some(parent) = target.parent().filter(|parent| !parent.as_os_str().is_empty()) {
                 let problem = match fs::metadata(parent) {
                     Ok(metadata) if metadata.is_dir() => None,
@@ -84,7 +86,7 @@ impl Converter {
                     Err(e) => Some(format!("cannot be reached: {e}")),
                 };
                 if let Some(problem) = problem {
-                    return Err(error("io", 5, format!("the output's directory {} {problem}", parent.display())));
+                    return Err(error("io", 5, format!("the {what}'s directory {} {problem}", parent.display())));
                 }
             }
         }
@@ -114,7 +116,7 @@ impl Converter {
 
     /// Stops the conversion once `flag` is true, for example from a signal handler: the next message added, the next
     /// item [`finish`](Converter::finish) writes, or the attachment being written fails with `interrupted`, and the
-    /// writer goes back to its last commit. As on any error, `finish` removes the files it created, and dropping the
+    /// conversion does not finish. As on any error, `finish` removes the files it created, and dropping the
     /// converter removes the staging directory; nothing else is touched.
     pub fn set_cancel_flag(&mut self, flag: Arc<AtomicBool>) {
         self.cancel = Some(flag);
@@ -143,11 +145,10 @@ impl Converter {
     pub fn add_path(&mut self, input: &Path) -> Result<(), ConvertError> {
         let metadata = fs::metadata(input).map_err(|e| error("input-unreadable", 2, format!("{}: {e}", input.display())))?;
         // An input such as ".", ".." or "/" has no name of its own: the directory it stands for gives it.
-        let name = Some(file_name(input))
-            .filter(|name| !name.is_empty())
-            .or_else(|| input.canonicalize().ok().map(|path| file_name(&path)).filter(|name| !name.is_empty()))
-            .unwrap_or_else(|| "Imported".to_string());
+        let name = real_name(input).unwrap_or_else(|| "Imported".to_string());
         if metadata.is_dir() {
+            // A Thunderbird `Name.sbd` or Apple Mail `Name.mbox` directory given on its own is the folder `Name`.
+            let name = name.strip_suffix(".sbd").or_else(|| name.strip_suffix(".mbox")).filter(|stem| !stem.is_empty()).unwrap_or(&name).to_string();
             if is_maildir(input) {
                 self.add_maildir(input, &name, &["Inbox".to_string()], &[])
             } else {
@@ -238,8 +239,8 @@ impl Converter {
         self.add_routed(raw, container, folder, mbox_date, seen, draft, true)
     }
 
-    /// As `add_message`; `routed` false keeps the message in `folder` whatever its Gmail labels (they still become
-    /// categories).
+    /// As `add_message`; `routed` false keeps the message in `folder` whatever its Gmail labels (its labels that are not
+    /// system folders still become categories, and Drafts and Unread still set its state).
     #[allow(clippy::too_many_arguments)]
     fn add_routed(&mut self, raw: &[u8], container: &str, folder: &[String], mbox_date: Option<i64>, seen: Option<bool>, draft: bool, routed: bool) -> Result<(), ConvertError> {
         self.cancelled()?;
@@ -358,7 +359,8 @@ impl Converter {
                 let here = if folder.is_empty() { vec![top.to_string()] } else { folder.to_vec() };
                 let empty = fs::metadata(&entry).is_ok_and(|metadata| metadata.len() == 0);
                 // An empty mailbox: Thunderbird's file beside its index, Apple Mail's `Name.mbox/mbox`.
-                let empty_mail_folder = empty && (dir.join(format!("{name}.msf")).is_file() || (name == "mbox" && file_name(dir).ends_with(".mbox")));
+                let empty_mail_folder =
+                    empty && (dir.join(format!("{name}.msf")).is_file() || (name == "mbox" && real_name(dir).is_some_and(|dir| dir.ends_with(".mbox"))));
                 if name.to_ascii_lowercase().ends_with(".eml") {
                     let raw = fs::read(&entry).map_err(|e| unreadable(&entry, e))?;
                     self.add_message(&raw, &entry_container, &here, None, None, false)?;
@@ -496,107 +498,125 @@ impl<R: BufRead> MboxEntries<R> {
     }
 }
 
+/// The words of a "From " line after its sender, split on spaces and tabs, without UUCP's trailing "remote from
+/// host"; `None` when the line has no sender. A sender need not be UTF-8 (a Latin-1 address). The oracle
+/// (`tests/oracle/compare_mail.py`) states this and the two rules below step by step in Python.
+fn from_line_words(line: &[u8]) -> Option<Vec<String>> {
+    let text = String::from_utf8_lossy(line);
+    let rest = text.trim_end_matches(['\r', '\n']).strip_prefix("From ")?;
+    let mut words: Vec<String> = rest.split([' ', '\t']).filter(|word| !word.is_empty()).map(str::to_string).collect();
+    if words.is_empty() {
+        return None;
+    }
+    words.remove(0);
+    let n = words.len();
+    if n >= 3 && words[n - 3] == "remote" && words[n - 2] == "from" {
+        words.truncate(n - 3);
+    }
+    Some(words)
+}
+
+fn ascii_digits(word: &str, lengths: std::ops::RangeInclusive<usize>) -> bool {
+    lengths.contains(&word.len()) && word.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+/// `h:mm`, `hh:mm` or `hh:mm:ss`, as (hour, minute, second); ranges are checked with the date.
+fn clock(word: &str) -> Option<(u8, u8, u8)> {
+    let parts: Vec<&str> = word.split(':').collect();
+    if !(2..=3).contains(&parts.len()) || !ascii_digits(parts[0], 1..=2) || parts[1..].iter().any(|part| !ascii_digits(part, 2..=2)) {
+        return None;
+    }
+    let second = parts.get(2).map_or(Some(0), |part| part.parse().ok())?;
+    Some((parts[0].parse().ok()?, parts[1].parse().ok()?, second))
+}
+
+/// A zone: `+hhmm` or `-hhmm` (hours to 23), or 1 to 5 capital letters (RFC 5322 4.3: UT, GMT, Z and the North
+/// American names have their offsets; any other name is taken as UTC). As (west of GMT, hours, minutes).
+fn zone(word: &str) -> Option<(bool, u8, u8)> {
+    if word.len() == 5 && (word.starts_with('+') || word.starts_with('-')) && ascii_digits(&word[1..], 4..=4) {
+        let (hours, minutes) = (word[1..3].parse().ok()?, word[3..].parse().ok()?);
+        return (hours <= 23 && minutes <= 59).then_some((word.starts_with('-'), hours, minutes));
+    }
+    if !(1..=5).contains(&word.len()) || !word.bytes().all(|byte| byte.is_ascii_uppercase()) {
+        return None;
+    }
+    Some(match word {
+        "EST" => (true, 5, 0),
+        "EDT" => (true, 4, 0),
+        "CST" => (true, 6, 0),
+        "CDT" => (true, 5, 0),
+        "MST" => (true, 7, 0),
+        "MDT" => (true, 6, 0),
+        "PST" => (true, 8, 0),
+        "PDT" => (true, 7, 0),
+        _ => (false, 0, 0),
+    })
+}
+
+const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+/// The date, when it exists (a real calendar day, year 1900 to 3000, hours to 23, minutes and seconds to 59).
+fn timestamp(year: u16, month: u8, day: u8, (hour, minute, second): (u8, u8, u8), (west, tz_hour, tz_minute): (bool, u8, u8)) -> Option<i64> {
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    if !(1..=12).contains(&month) || day == 0 || day > days[usize::from(month) - 1] {
+        return None;
+    }
+    let date = mail_parser::DateTime { year, month, day, hour, minute, second, tz_before_gmt: west, tz_hour, tz_minute };
+    date.is_valid().then(|| date.to_timestamp())
+}
+
 /// A "From " line whose date is written as in a Date header (RFC 5322 3.3), "From sender Sat, 01 Jan 2024 11:00:00
 /// +0000": its date, when the words after the sender are exactly `[day-of-week[,]] day month year hh:mm[:ss] [zone]
-/// [(comment)]`, the zone `+hhmm`/`-hhmm` or a name RFC 5322 4.3 lists (none is UTC), the year 1900 to 3000, and the
-/// date exists. Anything else, such as a body line that only starts like a date, is no such line. The oracle
-/// (`tests/oracle/compare_mail.py`, `date_header_style`) states the same grammar as a regular expression.
+/// [(comment)]` and the date exists. Anything else, such as a body line that only starts like a date, is no such line.
 fn date_header_style(line: &[u8]) -> Option<i64> {
-    let text = String::from_utf8_lossy(line);
-    let (_, date) = text.trim_end().strip_prefix("From ")?.trim_start().split_once(char::is_whitespace)?;
-    let mut words: Vec<&str> = date.split_whitespace().collect();
+    let mut words = from_line_words(line)?;
     if let Some(at) = words.iter().position(|word| word.starts_with('(')) {
-        // A comment, last: "(UTC)", "(Coordinated Universal Time)".
         if !words.last().is_some_and(|word| word.ends_with(')')) {
             return None;
         }
         words.truncate(at);
     }
-    let mut words = words.into_iter().peekable();
     const DAYS: [&str; 7] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-    if words.peek().is_some_and(|word| DAYS.contains(&word.trim_end_matches(',').to_ascii_lowercase().as_str())) {
-        words.next();
-    }
-    let day: u8 = words.next().filter(|word| (1..=2).contains(&word.len()))?.parse().ok()?;
-    const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-    let month = MONTHS.iter().position(|month| words.peek().is_some_and(|word| word.eq_ignore_ascii_case(month)))? as u8 + 1;
-    words.next();
-    let year: u16 = words.next().filter(|word| word.len() == 4)?.parse().ok()?;
-    let clock: Vec<&str> = words.next()?.split(':').collect();
-    if !(2..=3).contains(&clock.len()) || clock.iter().any(|part| part.len() != 2 || !part.bytes().all(|byte| byte.is_ascii_digit())) {
+    let weekday = words.first().is_some_and(|word| DAYS.contains(&word.strip_suffix(',').unwrap_or(word).to_ascii_lowercase().as_str()));
+    let rest = &words[usize::from(weekday)..];
+    if !(4..=5).contains(&rest.len()) || !ascii_digits(&rest[0], 1..=2) || !ascii_digits(&rest[2], 4..=4) {
         return None;
     }
-    let part = |index: usize| clock.get(index).map_or(Some(0), |part| part.parse::<u8>().ok());
-    let (hour, minute, second) = (part(0)?, part(1)?, part(2)?);
-    let (before_gmt, tz_hour, tz_minute) = match words.next() {
+    let month = MONTHS.iter().position(|month| rest[1].eq_ignore_ascii_case(month))? as u8 + 1;
+    let tz = match rest.get(4) {
+        Some(word) => zone(word)?,
         None => (false, 0, 0),
-        Some(zone) if (zone.starts_with('+') || zone.starts_with('-')) && zone.len() == 5 && zone[1..].bytes().all(|byte| byte.is_ascii_digit()) => {
-            (zone.starts_with('-'), zone[1..3].parse().ok()?, zone[3..].parse().ok()?)
-        }
-        Some(zone) => match zone.to_ascii_uppercase().as_str() {
-            "UT" | "GMT" | "Z" => (false, 0, 0),
-            "EST" => (true, 5, 0),
-            "EDT" => (true, 4, 0),
-            "CST" => (true, 6, 0),
-            "CDT" => (true, 5, 0),
-            "MST" => (true, 7, 0),
-            "MDT" => (true, 6, 0),
-            "PST" => (true, 8, 0),
-            "PDT" => (true, 7, 0),
-            _ => return None,
-        },
     };
-    if words.next().is_some() || !(1900..=3000).contains(&year) || hour > 23 || minute > 59 || second > 59 || tz_minute > 59 {
-        return None;
-    }
-    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    let days_in_month = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][usize::from(month) - 1];
-    if day == 0 || day > days_in_month {
-        return None;
-    }
-    let date = mail_parser::DateTime { year, month, day, hour, minute, second, tz_before_gmt: before_gmt, tz_hour, tz_minute };
-    date.is_valid().then(|| date.to_timestamp())
+    timestamp(rest[2].parse().ok()?, month, rest[0].parse().ok()?, clock(&rest[3])?, tz)
 }
 
-/// An MBOX "From " line's date: `Some(date)` when the line has a sender, a time and a four-digit year at its end
-/// ("From sender Mon Jan  1 10:00:00 2024", also with a time zone before the year), `Some(None)` when its date cannot
-/// be read, `None` when the line is no MBOX "From " line.
+/// An MBOX "From " line (asctime, as mail programs write it): `Some(date)` when the words after the sender end with a
+/// four-digit year, optionally followed by a zone, and one of them is a time ("From sender Mon Jan  1 10:00:00 2024",
+/// also with a zone before or after the year); `Some(None)` when its date cannot be read; `None` when the line is no
+/// MBOX "From " line.
 fn from_line_date(line: &[u8]) -> Option<Option<i64>> {
-    // A sender need not be UTF-8 (a Latin-1 address); UUCP's mailers end the line with "remote from host".
-    let text = String::from_utf8_lossy(line);
-    let text = text.trim_end();
-    let text = match text.rsplit_once(" remote from ") {
-        Some((head, host)) if !host.is_empty() && !host.contains(char::is_whitespace) => head,
-        _ => text,
-    };
-    let mut words = text.strip_prefix("From ")?.split_whitespace();
-    words.next()?;
-    let rest: Vec<&str> = words.collect();
-    let year: u16 = rest.last().filter(|year| year.len() == 4).and_then(|year| year.parse().ok())?;
-    let time = rest.iter().find(|word| word.matches(':').count() >= 1 && word.chars().all(|c| c.is_ascii_digit() || c == ':'))?;
-    const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-    let month = rest.iter().find_map(|word| MONTHS.iter().position(|m| word.eq_ignore_ascii_case(m)));
-    let day = rest.iter().find_map(|word| word.parse::<u8>().ok().filter(|day| (1..=31).contains(day)));
-    let mut clock = time.split(':').map(|part| part.parse::<u8>().ok());
-    let (hour, minute, second) = (clock.next().flatten(), clock.next().flatten(), clock.next().flatten().unwrap_or(0));
-    let date = match (month, day, hour, minute) {
-        (Some(month), Some(day), Some(hour), Some(minute)) => {
-            let date = mail_parser::DateTime {
-                year,
-                month: month as u8 + 1,
-                day,
-                hour,
-                minute,
-                second,
-                tz_before_gmt: false,
-                tz_hour: 0,
-                tz_minute: 0,
-            };
-            date.is_valid().then(|| date.to_timestamp())
+    let mut words = from_line_words(line)?;
+    let mut tz = (false, 0, 0);
+    let n = words.len();
+    if n >= 2 && ascii_digits(&words[n - 2], 4..=4) {
+        if let Some(found) = zone(&words[n - 1]) {
+            tz = found;
+            words.pop();
         }
+    }
+    let year: u16 = words.last().filter(|word| ascii_digits(word, 4..=4))?.parse().ok()?;
+    let time = words.iter().find_map(|word| clock(word))?;
+    let month = words.iter().find_map(|word| MONTHS.iter().position(|month| word.eq_ignore_ascii_case(month)));
+    let day = words.iter().find(|word| ascii_digits(word, 1..=2)).and_then(|word| word.parse::<u8>().ok());
+    // A zone before the year (Google Takeout: "+0000 2024") gives the offset too.
+    if let Some(found) = words.iter().rev().skip(1).find_map(|word| (word.starts_with('+') || word.starts_with('-')).then(|| zone(word)).flatten()) {
+        tz = found;
+    }
+    Some(match (month, day) {
+        (Some(month), Some(day)) => timestamp(year, month as u8 + 1, day, time, tz),
         _ => None,
-    };
-    Some(date)
+    })
 }
 
 fn error(code: &'static str, exit_code: u8, detail: impl Into<String>) -> ConvertError {
@@ -609,6 +629,13 @@ fn io_error(e: io::Error) -> ConvertError {
 
 fn unreadable(path: &Path, e: io::Error) -> ConvertError {
     error("input-unreadable", 2, format!("{}: {e}", path.display()))
+}
+
+/// A path's own name, or for one such as ".", ".." or "./" the name of the directory it stands for.
+fn real_name(path: &Path) -> Option<String> {
+    Some(file_name(path))
+        .filter(|name| !name.is_empty())
+        .or_else(|| path.canonicalize().ok().map(|path| file_name(&path)).filter(|name| !name.is_empty()))
 }
 
 fn file_name(path: &Path) -> String {
@@ -635,7 +662,7 @@ fn is_maildir(dir: &Path) -> bool {
 /// `.sbd` directory, Apple Mail's `Name.mbox/mbox`).
 fn labels_route(path: &Path) -> bool {
     let name = file_name(path);
-    let parent = path.parent().map(file_name).unwrap_or_default();
+    let parent = path.parent().and_then(real_name).unwrap_or_default();
     !(path.with_file_name(format!("{name}.msf")).is_file() || parent.ends_with(".sbd") || (name == "mbox" && parent.ends_with(".mbox")))
 }
 
@@ -739,28 +766,54 @@ impl Drop for Staging {
 mod tests {
     use super::*;
 
+    /// The cases the oracle's self-test (`tests/oracle/compare_mail.py`, `_date_rule_self_test`) holds too.
+    const DATE_HEADER_LINES: [(&str, bool); 19] = [
+        ("From a@example.invalid Sat, 01 Jan 2024 11:00:00 +0000", true),
+        ("From a@example.invalid Mon, 1 Jan 2024 10:00:00 -0500", true),
+        ("From a Sat, 01 Jan 2024 11:00:00", true),
+        ("From a 1 Jan 2024 11:00 GMT", true),
+        ("From a Sat, 01 Jan 2024 11:00:00 +0000 (UTC)", true),
+        ("From a Mon, 1 Jan 2024 12:00:00 UTC", true),
+        ("From a Mon, 1 Jan 2024 12:00:00 CET", true),
+        ("From 9:00 to 17:00", false),
+        ("From our website", false),
+        ("From me 12:30 today", false),
+        ("From here on 2024", false),
+        ("From John Sat, 01 Jan 2024 11:00:00 +0000 wrote:", false),
+        ("From a Sat, 31 Feb 2024 10:00:00 +0000", false),
+        ("From a Mon Jan  1 10:00:00 2024 +0000", false),
+        ("From a Sat, 01 Jan 2024 11:00:00 +2400", false),
+        ("From a Sat,, 01 Jan 2024 11:00:00 +0000", false),
+        ("From a Sat, +1 Jan 2024 11:00:00 +0000", false),
+        ("From a Sat, 01 Jan 2024 11:00:00 gmt", false),
+        ("From a Sat, 01 Jan 1899 11:00:00 +0000", false),
+    ];
+
+    /// The asctime cases the oracle's self-test holds too.
+    const ASCTIME_LINES: [(&str, bool); 14] = [
+        ("From a Mon Jan  1 10:00:00 2024", true),
+        ("From - Mon Jan  1 10:00:00 2024", true),
+        ("From 1@xxx Mon Jan 01 10:01:00 +0000 2024", true),
+        ("From a Mon Jan  1 10:00:00 2024 +0000", true),
+        ("From a Mon Jan  1 10:00:00 2024 GMT", true),
+        ("From a Mon Jan  1 10:00:00 2024 remote from host", true),
+        ("From me at 12:30 in 2024 too", false),
+        ("From a : 2024", false),
+        ("From a 1:2 2024", false),
+        ("From a Mon Jan 1 10:0 2024", false),
+        ("From a 10:00 -2024", false),
+        ("From 9:00 to 17:00, 2024", false),
+        ("From John Sat, 06 Jan 2024 11:00:00 +0000", false),
+        ("From", false),
+    ];
+
     #[test]
     fn date_header_style_reads_only_dates() {
         assert_eq!(date_header_style(b"From a@example.invalid Sat, 01 Jan 2024 11:00:00 +0000\n"), Some(1_704_106_800));
         assert_eq!(date_header_style(b"From a@example.invalid Mon, 1 Jan 2024 10:00:00 -0500\r\n"), Some(1_704_121_200));
-        // Without a zone (taken as UTC), without seconds, with a comment after the zone.
-        assert_eq!(date_header_style(b"From a Sat, 01 Jan 2024 11:00:00\n"), Some(1_704_106_800));
         assert_eq!(date_header_style(b"From a 1 Jan 2024 11:00 GMT\n"), Some(1_704_106_800));
-        assert_eq!(date_header_style(b"From a Sat, 01 Jan 2024 11:00:00 +0000 (UTC)\n"), Some(1_704_106_800));
-        for body in [
-            "From 9:00 to 17:00\r\n",
-            "From our website\r\n",
-            "From me 12:30 today\n",
-            "From here on 2024\n",
-            "From a Mon Jan 1\n",
-            // A line in a body that only starts like a date.
-            "From John Sat, 01 Jan 2024 11:00:00 +0000 wrote:\n",
-            // No such day.
-            "From a Sat, 31 Feb 2024 10:00:00 +0000\n",
-            // asctime with a zone after the year is the MBOX form, not a Date header's.
-            "From a Mon Jan  1 10:00:00 2024 +0000\n",
-        ] {
-            assert_eq!(date_header_style(body.as_bytes()), None, "{body:?}");
+        for (line, accepted) in DATE_HEADER_LINES {
+            assert_eq!(date_header_style(line.as_bytes()).is_some(), accepted, "{line:?}");
         }
     }
 
@@ -768,17 +821,29 @@ mod tests {
     fn from_line_dates() {
         let date = |line: &str| from_line_date(line.as_bytes());
         assert_eq!(date("From a Mon Jan  1 10:00:00 2024\n"), Some(Some(1_704_103_200)));
-        // UUCP's "remote from" and a sender that is not UTF-8 (Latin-1).
         assert_eq!(date("From a Mon Jan  1 10:00:00 2024 remote from host\n"), Some(Some(1_704_103_200)));
         assert_eq!(from_line_date(b"From j\xfcrgen@example.invalid Mon Jan  1 10:00:00 2024\n"), Some(Some(1_704_103_200)));
+        // A zone after the year (UW c-client, Alpine) or before it (Google Takeout) gives the offset.
+        assert_eq!(date("From a Mon Jan  1 10:00:00 2024 +0000\n"), Some(Some(1_704_103_200)));
+        assert_eq!(date("From a Mon Jan  1 10:00:00 2024 -0500\n"), Some(Some(1_704_121_200)));
+        assert_eq!(date("From a Mon Jan 01 10:00:00 -0500 2024\n"), Some(Some(1_704_121_200)));
+        for (line, accepted) in ASCTIME_LINES {
+            assert_eq!(from_line_date(line.as_bytes()).is_some(), accepted, "{line:?}");
+        }
     }
 
     #[test]
-    fn an_mbox_entry_with_a_zone_after_the_year_takes_no_misread_date() {
-        let text = "From a Mon Jan  1 10:00:00 2024 +0000\nSubject: one\n\nbody\n";
+    fn mbox_entries_split_at_every_kind_of_from_line_and_only_there() {
+        let text = "From a Mon Jan  1 10:00:00 2024 +0000\nSubject: one\n\nbody\nFrom John Sat, 06 Jan 2024 11:00:00 +0000\n\n\
+                    From a Mon Jan  1 11:00:00 2024 +0000\nSubject: two\n\nbody\n\n\
+                    From a Mon, 1 Jan 2024 12:00:00 UTC\nSubject: three\n\nbody\n";
         let mut entries = MboxEntries { reader: io::Cursor::new(text.as_bytes()), line: Vec::new(), ahead: Vec::new(), pending: None, first: true };
-        let (_, date) = entries.next_entry().unwrap().unwrap();
-        assert_eq!(date, None, "the Date header gives the time, not a misread From line");
+        let mut dates = Vec::new();
+        while let Some((raw, date)) = entries.next_entry().unwrap() {
+            assert!(raw.starts_with(b"Subject: "), "{:?}", String::from_utf8_lossy(&raw));
+            dates.push(date);
+        }
+        assert_eq!(dates, vec![Some(1_704_103_200), Some(1_704_106_800), Some(1_704_110_400)]);
     }
 
     #[cfg(unix)]

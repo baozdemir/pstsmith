@@ -650,3 +650,46 @@ fn a_thunderbird_folder_keeps_its_messages_whatever_their_gmail_labels() {
     assert_eq!(folders[&key(&["Empty"])], Vec::<String>::new());
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn mbox_from_lines_with_a_zone_after_the_year_split_every_message() {
+    // UW c-client and Alpine write the asctime From line with a zone after the year; a Date-style one may carry any
+    // zone name. Each such line starts a message, also in the middle of the file.
+    let dir = temp_dir("zone-after-year");
+    let mbox = dir.join("Alpine.mbox");
+    let text = format!(
+        "From a Mon Jan  1 10:00:00 2024 +0000\r\n{}\r\nFrom a Mon Jan  1 11:00:00 2024 +0000\r\n{}\r\nFrom a Mon, 1 Jan 2024 12:00:00 UTC\r\n{}",
+        eml("one"),
+        eml("two"),
+        eml("three")
+    );
+    write(&mbox, text.as_bytes());
+    let output = dir.join("out.pst");
+    let report = convert(&[&mbox], &output);
+    assert_eq!(report.written(), 3);
+    assert_eq!(tree(&output)[&key(&["Alpine"])], vec!["one", "two", "three"]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn an_apple_mail_mailbox_given_on_its_own_is_named_without_its_suffix() {
+    let dir = temp_dir("apple-direct");
+    let mailbox = dir.join("Clients.mbox");
+    write(&mailbox.join("mbox"), format!("From a Mon Jan  1 10:00:00 2024\n{}", eml("client")).as_bytes());
+    write(&dir.join("Empty.mbox/mbox"), b"");
+    let output = dir.join("out.pst");
+    convert(&[&mailbox, &dir.join("Empty.mbox")], &output);
+    let folders = tree(&output);
+    assert_eq!(folders[&key(&["Clients"])], vec!["client"]);
+    assert_eq!(folders[&key(&["Empty"])], Vec::<String>::new());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_missing_exclusion_record_directory_is_named_as_such() {
+    let dir = temp_dir("missing-excluded-parent");
+    let options = ManifestOptions { excluded: Some(dir.join("nope").join("excluded.jsonl")), ..ManifestOptions::default() };
+    let error = Converter::create(Output::File(dir.join("out.pst")), &options).unwrap_err();
+    assert!(error.detail.starts_with("the exclusion record's directory"), "{}", error.detail);
+    std::fs::remove_dir_all(&dir).unwrap();
+}

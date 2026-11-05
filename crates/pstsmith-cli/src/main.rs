@@ -4,8 +4,8 @@
 //! (see [`pstsmith::convert::mail::Converter::add_path`]); a human-readable summary goes to stderr, and with `--json`
 //! the `pst-export-result/1` line to stdout. Its warnings name the item concerned by its input path, for the person
 //! running the command; the manifest mode below writes no file names. Stopped by SIGINT (Ctrl-C), SIGTERM, SIGQUIT or
-//! SIGHUP, convert removes what it created and its staging directory, prints an `interrupted` error line and ends by
-//! that signal ([`Stop`]); the manifest mode keeps the default signal behaviour.
+//! SIGHUP, convert removes what it created and its staging directory, prints an `interrupted` error line and ends
+//! ([`Stop`]); the manifest mode keeps the default signal behaviour.
 //!
 //! `pstsmith --manifest FILE` converts a JSONL manifest of mail items into one PST file or size-limited parts:
 //!
@@ -67,9 +67,10 @@ Options:
 
 Exit codes: 0 converted; 2 invalid input or usage; 3 an attachment does not match its recorded size or hash;
 4 an output path exists; 5 a writer or I/O failure. An error is the first line on stderr, as JSON. convert stopped
-by Ctrl-C (on Unix also SIGTERM or SIGHUP) removes what it wrote, prints the error interrupted and ends by that
-signal (a shell shows 128 plus its number); SIGQUIT exits with 131, without a core dump; a second Ctrl-C ends it
-at once.
+by Ctrl-C (on Unix also SIGTERM, SIGQUIT or SIGHUP) removes what it wrote, prints the error interrupted and ends:
+on Unix by that signal (SIGQUIT: exit status 131, without a core dump), on Windows with STATUS_CONTROL_C_EXIT. A
+signal after the last file is complete keeps the files. A second Ctrl-C ends it at once (exit status 130) and
+leaves them.
 ";
 
 struct Options {
@@ -243,13 +244,17 @@ fn convert_main(args: Vec<String>) -> ExitCode {
             for warning in report.warnings() {
                 say!("warning: {warning}");
             }
+            let mut code = ExitCode::SUCCESS;
             if options.json {
-                println!("{}", report.result_line());
+                if let Err(e) = writeln!(io::stdout(), "{}", report.result_line()).and_then(|()| io::stdout().flush()) {
+                    // The files are complete; the caller just cannot be told so on stdout.
+                    code = fail(ConvertError { code: "io", exit_code: 5, item_key: None, detail: format!("the result line could not be written to stdout: {e}") });
+                }
             }
             // A signal that came after the last item: the files are complete and stay, but the process still ends
             // by the signal, so that a shell loop running it stops.
             stop.end_by_signal();
-            ExitCode::SUCCESS
+            code
         }
         Err(error) => {
             // After the error line: callers read stderr's first line as the error.

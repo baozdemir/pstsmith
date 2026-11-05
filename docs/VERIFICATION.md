@@ -65,7 +65,7 @@ the manifest conversion's path unchanged, so the writer checks above apply to it
 - **A conversion killed in a way it cannot catch** (SIGKILL, an out-of-memory kill), or stopped by a second Ctrl-C,
   leaves its staging directory, which holds decoded mail, and its partial output behind. A failure removes both, and
   so does `pstsmith convert` when it is stopped by Ctrl-C (on Unix also SIGTERM, SIGQUIT or SIGHUP), also while it
-  writes a file; on Windows only Ctrl-C is handled (Ctrl-Break and closing the console window are not). A library caller stops a conversion with `Converter::set_cancel_flag`.
+  writes a file (a signal after the last file is complete keeps the whole files); on Windows only Ctrl-C is handled (Ctrl-Break and closing the console window are not). A library caller stops a conversion with `Converter::set_cancel_flag`.
 - **Microsoft 365 import limits seen in the test above,** which apply to any PST:
   - Exchange Online's default maximum receive size is 36 MB (at most 150 MB); larger items are skipped by the import.
   - A mailbox has a quota of named properties (16,384 in all; 3,277 per custom namespace or in PS_PUBLIC_STRINGS;

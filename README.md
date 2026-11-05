@@ -70,10 +70,11 @@ A directory is walked in name order: `.eml` files become a folder per directory,
 modified UTF-7 are decoded). Gmail labels become folders and categories, each message written once. `-o` writes one
 file of at most 10 GB (`--max-file-size`), the largest PST Purview eDiscovery exports write; a larger mailbox needs
 `--output-dir`. The decoded messages are staged in a private temporary directory (`--temp-dir`), which needs about as
-much free space as the input and is removed when the conversion ends. Stopped by Ctrl-C (on Unix also SIGTERM, SIGQUIT or SIGHUP), `convert` removes
-what it created and its staging directory; a second Ctrl-C ends it at once and leaves them, as does a kill that
-cannot be caught (SIGKILL, an out-of-memory kill) and, on Windows, Ctrl-Break or closing the console window. A
-signal ignored when it starts (`nohup`) stays ignored.
+much free space as the input and is removed when the conversion ends. Stopped by Ctrl-C (on Unix also SIGTERM,
+SIGQUIT or SIGHUP), `convert` removes what it created and its staging directory (a signal after the last file is
+complete keeps the files); a second Ctrl-C ends it at once and leaves them, as does a kill that cannot be caught
+(SIGKILL, an out-of-memory kill) and, on Windows, Ctrl-Break or closing the console window. A signal ignored when it
+starts (`nohup`) stays ignored.
 
 **Rust**
 
