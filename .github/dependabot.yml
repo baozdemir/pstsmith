@@ -27,3 +27,6 @@ updates:
       # A new major of the Node.js types is taken by hand, with the Node.js versions the package supports.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+      # A new major of the compiler is taken by hand: it changes the published JavaScript and declarations.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
