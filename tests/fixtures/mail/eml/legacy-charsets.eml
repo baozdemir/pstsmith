@@ -1,0 +1,25 @@
+From: sender@example.invalid
+To: to@example.invalid
+Subject: =?ISO-8859-9?Q?=DEirket_duyurusu_=F0=FC=FE=F6=E7=FD_=DD?= =?ISO-2022-JP?B?GyRCRnxLXDhsGyhC?=
+Date: Tue, 02 Jan 2024 10:30:00 +0300
+Message-ID: <legacy-charsets@example.invalid>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="lc"
+
+--lc
+Content-Type: text/plain; charset=iso-8859-9
+Content-Transfer-Encoding: 8bit
+
+Þirket notu.
+--lc
+Content-Type: text/plain; charset=iso-8859-9
+Content-Disposition: attachment; filename*=iso-8859-9''%DE%FD%F0%20notlar%FD.txt
+
+not
+--lc
+Content-Type: application/octet-stream; name="=?windows-1254?Q?=E7=FD=F0=FE=FC_=DD.bin?="
+Content-Disposition: attachment; filename="=?windows-1254?Q?=E7=FD=F0=FE=FC_=DD.bin?="
+Content-Transfer-Encoding: base64
+
+AAECAw==
+--lc--

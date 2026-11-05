@@ -455,3 +455,52 @@ fn a_symbolic_link_to_a_directory_is_not_followed() {
     assert!(report.warnings().iter().any(|warning| warning.contains("symbolic link")), "{:?}", report.warnings());
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn maildir_plus_plus_names_in_modified_utf7_are_decoded() {
+    // Dovecot and Courier store Maildir++ folder names in IMAP's modified UTF-7 (RFC 3501 5.1.3) unless told to use
+    // UTF-8: "Gönderilmiş" is ".G&APY-nderilmi&AV8-", "R&D" is ".R&-D". A name that is not valid modified UTF-7 (a
+    // store kept in UTF-8) is used as it is.
+    let dir = temp_dir("mutf7");
+    let root = dir.join("Maildir");
+    write(&root.join("new/1700000001.1.host"), eml("inbox").as_bytes());
+    for (folder, subject) in [
+        (".G&APY-nderilmi&AV8-", "sent"),
+        (".R&-D", "research"),
+        (".Ar&AV8-iv.2024", "archived"),
+        (".Taslaklar Ğİ", "utf8"),
+        (".Q&A", "invalid"),
+        (".INBOX", "upper"),
+    ] {
+        write(&root.join(format!("{folder}/new/1700000002.2.host")), eml(subject).as_bytes());
+        std::fs::create_dir_all(root.join(format!("{folder}/cur"))).unwrap();
+    }
+    std::fs::create_dir_all(root.join("cur")).unwrap();
+    let output = dir.join("out.pst");
+    let report = convert(&[&root], &output);
+    let folders = tree(&output);
+    assert_eq!(folders[&key(&["Gönderilmiş"])], vec!["sent"]);
+    assert_eq!(folders[&key(&["R&D"])], vec!["research"]);
+    assert_eq!(folders[&key(&["Arşiv", "2024"])], vec!["archived"]);
+    assert_eq!(folders[&key(&["Taslaklar Ğİ"])], vec!["utf8"]);
+    assert_eq!(folders[&key(&["Q&A"])], vec!["invalid"]);
+    assert_eq!(folders[&key(&["Inbox"])], vec!["inbox"]);
+    assert_eq!(folders[&key(&["INBOX"])], vec!["upper"]);
+    assert!(report.warnings().iter().any(|warning| warning.contains("INBOX, Inbox differ only in case")), "{:?}", report.warnings());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symbolic_link_among_maildir_folders_is_not_followed() {
+    let dir = temp_dir("maildir-link");
+    let root = dir.join("Maildir");
+    write(&root.join("new/1700000001.1.host"), eml("one").as_bytes());
+    std::fs::create_dir_all(root.join("cur")).unwrap();
+    std::os::unix::fs::symlink(".", root.join(".loop")).unwrap();
+    let output = dir.join("out.pst");
+    let report = convert(&[&root], &output);
+    assert_eq!(report.written(), 1);
+    assert!(report.warnings().iter().any(|warning| warning.contains("symbolic link")), "{:?}", report.warnings());
+    std::fs::remove_dir_all(&dir).unwrap();
+}

@@ -11,6 +11,7 @@ message/rfc822 parts attached messages. Delivery reports are checked against `re
 statement of MS-OXCMAIL 2.2.3.7 in Python. `--negative-control` compares one case's source with another case's PST and
 must find mismatches. Exit 0 only when every compared field matches.
 """
+import base64
 import email
 import email.policy
 import re
@@ -87,6 +88,32 @@ def is_maildir(path):
     return (path / "cur").is_dir() and (path / "new").is_dir()
 
 
+def modified_utf7(name):
+    """A Maildir++ folder name in IMAP's modified UTF-7 (RFC 3501 5.1.3), decoded with the base64 module; None when
+    the name is not canonical modified UTF-7, and pstsmith then keeps it as it is."""
+    if not name.isascii():
+        return None
+    out, rest = "", name
+    while "&" in rest:
+        head, _, tail = rest.partition("&")
+        encoded, dash, rest = tail.partition("-")
+        out += head
+        if not dash or not re.fullmatch(r"[A-Za-z0-9+,]*", encoded):
+            return None
+        if not encoded:
+            out += "&"
+            continue
+        standard = encoded.replace(",", "/")
+        try:
+            text = base64.b64decode(standard + "=" * (-len(standard) % 4), validate=True).decode("utf-16-be")
+        except (ValueError, UnicodeDecodeError):
+            return None
+        if base64.b64encode(text.encode("utf-16-be")).decode().rstrip("=") != standard or any(" " <= c <= "~" for c in text):
+            return None
+        out += text
+    return out + rest
+
+
 def maildir_messages(path, folder, prefix, out):
     for sub in ("cur", "new"):
         for entry in sorted((path / sub).iterdir()):
@@ -96,7 +123,7 @@ def maildir_messages(path, folder, prefix, out):
             out.append((folder, entry.read_bytes(), {"seen": sub == "cur" and "S" in info, "draft": "D" in info}))
     for entry in sorted(path.iterdir()):
         if entry.name.startswith(".") and len(entry.name) > 1 and is_maildir(entry):
-            sub_path = prefix + [part for part in entry.name[1:].split(".") if part]
+            sub_path = prefix + [modified_utf7(part) or part for part in entry.name[1:].split(".") if part]
             maildir_messages(entry, sub_path, sub_path, out)
 
 

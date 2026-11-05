@@ -52,6 +52,19 @@ def mail():
         b"Subject: =?windows-1254?Q?=DEubat_raporu_=FC=E7=FC=FE?= =?UTF-8?B?4pyT?=\r\nDate: Tue, 02 Jan 2024 09:30:00 +0300\r\n"
         b"Message-ID: <encoded-words@example.invalid>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=windows-1254\r\n"
         b"Content-Transfer-Encoding: 8bit\r\n\r\n\xc7al\xfd\xfemalar tamam.\r\n"))
+    # Legacy charsets in a subject (ISO-8859-9, ISO-2022-JP) and in attachment names (RFC 2231 in ISO-8859-9, RFC 2047
+    # in windows-1254, as many mail programs still write them).
+    write(e / "legacy-charsets.eml", (
+        b"From: sender@example.invalid\r\nTo: to@example.invalid\r\n"
+        b"Subject: =?ISO-8859-9?Q?=DEirket_duyurusu_=F0=FC=FE=F6=E7=FD_=DD?= =?ISO-2022-JP?B?GyRCRnxLXDhsGyhC?=\r\n"
+        b"Date: Tue, 02 Jan 2024 10:30:00 +0300\r\nMessage-ID: <legacy-charsets@example.invalid>\r\nMIME-Version: 1.0\r\n"
+        b"Content-Type: multipart/mixed; boundary=\"lc\"\r\n\r\n--lc\r\nContent-Type: text/plain; charset=iso-8859-9\r\n"
+        b"Content-Transfer-Encoding: 8bit\r\n\r\n\xdeirket notu.\r\n"
+        b"--lc\r\nContent-Type: text/plain; charset=iso-8859-9\r\n"
+        b"Content-Disposition: attachment; filename*=iso-8859-9''%DE%FD%F0%20notlar%FD.txt\r\n\r\nnot\r\n"
+        b"--lc\r\nContent-Type: application/octet-stream; name=\"=?windows-1254?Q?=E7=FD=F0=FE=FC_=DD.bin?=\"\r\n"
+        b"Content-Disposition: attachment; filename=\"=?windows-1254?Q?=E7=FD=F0=FE=FC_=DD.bin?=\"\r\n"
+        b"Content-Transfer-Encoding: base64\r\n\r\nAAECAw==\r\n--lc--\r\n"))
     write(e / "alternative-inline-image.eml", (
         "From: sender@example.invalid\nTo: to@example.invalid\nSubject: Inline image\nDate: Wed, 03 Jan 2024 08:00:00 +0000\n"
         "Message-ID: <inline-image@example.invalid>\nMIME-Version: 1.0\nContent-Type: multipart/related; boundary=\"rel\"\n\n"
@@ -123,7 +136,16 @@ def mail():
     (md / ".Sent" / "new").mkdir(parents=True, exist_ok=True)
     write(md / ".Archive.2024" / "cur" / "1704114000.4.host!2,DS", eml("Maildir draft"))
     (md / ".Archive.2024" / "new").mkdir(parents=True, exist_ok=True)
-    for empty in (md / "tmp", md / ".Sent" / "new", md / ".Archive.2024" / "new"):
+    # Dovecot and Courier store folder names in IMAP's modified UTF-7 ("Gönderilmiş", "Ar&Ge"); a store set to UTF-8
+    # has the name as it is ("Taslaklar Ğİ").
+    write(md / ".G&APY-nderilmi&AV8-" / "cur" / "1704117600.5.host!2,S", eml("Maildir modified UTF-7"))
+    write(md / ".Ar&-Ge" / "new" / "1704121200.6.host", eml("Maildir ampersand"))
+    write(md / ".Taslaklar Ğİ" / "cur" / "1704124800.7.host!2,DS", eml("Maildir UTF-8 name"))
+    (md / ".G&APY-nderilmi&AV8-" / "new").mkdir(parents=True, exist_ok=True)
+    (md / ".Ar&-Ge" / "cur").mkdir(parents=True, exist_ok=True)
+    (md / ".Taslaklar Ğİ" / "new").mkdir(parents=True, exist_ok=True)
+    for empty in (md / "tmp", md / ".Sent" / "new", md / ".Archive.2024" / "new", md / ".G&APY-nderilmi&AV8-" / "new",
+                  md / ".Ar&-Ge" / "cur", md / ".Taslaklar Ğİ" / "new"):
         (empty / ".keep").write_bytes(b"")
 
 

@@ -230,7 +230,8 @@ impl Converter {
         Ok(())
     }
 
-    /// A Maildir: `cur` and `new` in name order (new messages are unseen), then its Maildir++ folders `.A.B`.
+    /// A Maildir: `cur` and `new` in name order (new messages are unseen), then its Maildir++ folders `.A.B`, their
+    /// names decoded from modified UTF-7. A symbolic link among the folders is not followed and is counted.
     fn add_maildir(&mut self, dir: &Path, container: &str, folder: &[String], prefix: &[String]) -> Result<(), ConvertError> {
         self.folders.insert(folder.to_vec());
         for depth in 1..folder.len() {
@@ -253,8 +254,12 @@ impl Converter {
         for entry in sorted_entries(dir).map_err(|e| unreadable(dir, e))? {
             let name = file_name(&entry);
             if let Some(sub) = name.strip_prefix('.').filter(|sub| !sub.is_empty() && is_maildir(&entry)) {
+                if fs::symlink_metadata(&entry).map_err(|e| unreadable(&entry, e))?.file_type().is_symlink() {
+                    self.linked_directories += 1;
+                    continue;
+                }
                 let mut path = prefix.to_vec();
-                path.extend(sub.split('.').filter(|part| !part.is_empty()).map(str::to_string));
+                path.extend(sub.split('.').filter(|part| !part.is_empty()).map(|part| modified_utf7(part).unwrap_or_else(|| part.to_string())));
                 if path.len() > prefix.len() {
                     self.add_maildir(&entry, &format!("{container}/{name}"), &path, &path)?;
                 }
@@ -304,6 +309,52 @@ impl Converter {
         }
         Ok(())
     }
+}
+
+/// A Maildir++ folder name as Dovecot and Courier store it by default: IMAP's modified UTF-7 (RFC 3501 5.1.3), where
+/// "&" starts base64 of UTF-16 (with "," for "/") that runs to "-", and "&-" is "&". `None` when the name is not valid
+/// modified UTF-7, as in a store kept in UTF-8; the caller then uses the name as it is.
+fn modified_utf7(name: &str) -> Option<String> {
+    if !name.is_ascii() {
+        return None;
+    }
+    let mut out = String::new();
+    let mut rest = name;
+    while let Some(at) = rest.find('&') {
+        out.push_str(&rest[..at]);
+        let (encoded, after) = rest[at + 1..].split_once('-')?;
+        rest = after;
+        if encoded.is_empty() {
+            out.push('&');
+            continue;
+        }
+        let (mut bits, mut count, mut units) = (0u32, 0u32, Vec::new());
+        for byte in encoded.bytes() {
+            let value = match byte {
+                b'A'..=b'Z' => byte - b'A',
+                b'a'..=b'z' => byte - b'a' + 26,
+                b'0'..=b'9' => byte - b'0' + 52,
+                b'+' => 62,
+                b',' => 63,
+                _ => return None,
+            };
+            bits = bits << 6 | u32::from(value);
+            count += 6;
+            if count >= 16 {
+                count -= 16;
+                units.push((bits >> count) as u16);
+                bits &= (1 << count) - 1;
+            }
+        }
+        // What is left must be fewer than 6 bits, all zero; printable ASCII is never encoded.
+        let text = String::from_utf16(&units).ok().filter(|_| count < 6 && bits == 0)?;
+        if text.is_empty() || text.chars().any(|c| (' '..='~').contains(&c)) {
+            return None;
+        }
+        out.push_str(&text);
+    }
+    out.push_str(rest);
+    Some(out)
 }
 
 /// Files that come with mail folders and are not mail: Thunderbird's `.msf` indexes, Apple Mail's `Info.plist` and

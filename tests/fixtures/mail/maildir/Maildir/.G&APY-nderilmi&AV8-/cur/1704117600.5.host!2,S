@@ -1,0 +1,9 @@
+From: Sentetik Gönderen <sender@example.invalid>
+To: To User <to@example.invalid>
+Subject: Maildir modified UTF-7
+Date: Mon, 01 Jan 2024 10:00:00 +0000
+Message-ID: <maildir-modified-utf-7@example.invalid>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Synthetic body.
