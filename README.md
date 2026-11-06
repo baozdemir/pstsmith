@@ -35,7 +35,7 @@ pstsmith: wrote 7 messages to gmail.pst
 - **The writer's files are checked by Microsoft's own tools.** On a 20-file test kit, SCANPST finds only minor
   inconsistencies, with no `!!` or `??` line; classic Outlook opens the files; a Microsoft 365 (Purview) import
   accepted every file with 0 bad items. The mail input's mapping is checked against Python's `email` reading of the
-  sources. [How it was verified](docs/VERIFICATION.md).
+  sources and against Exchange Online's own MIME reader. [How it was verified](docs/VERIFICATION.md).
 - **Read back by two independent readers,** libpff and XstReader, field by field.
 - **Crash-safe appends.** Every commit is atomic: a crash or a full disk leaves the file at its last committed state.
 - **Bounded memory.** The writer streams attachments from disk: 128,000 messages in one folder took 17 MB. Mail
