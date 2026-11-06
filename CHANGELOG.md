@@ -6,6 +6,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-06
+
 ### Added
 
 - First release as pstsmith, a hard fork of `outlook-pst-rw` 1.2.14 ([docs/UPSTREAM.md](docs/UPSTREAM.md) lists every

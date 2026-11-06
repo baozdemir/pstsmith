@@ -6,6 +6,8 @@ All notable changes to the pstsmith command line are recorded here, in the forma
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-06
+
 ### Added
 
 - `pstsmith convert INPUT...` for EML files, MBOX files, Maildir directories and Thunderbird or Apple Mail folders,
