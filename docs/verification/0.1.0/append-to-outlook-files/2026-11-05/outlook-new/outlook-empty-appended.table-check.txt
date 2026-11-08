@@ -1,0 +1,33 @@
+HIER-TABLE of []: columns=25 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=2
+FOLDER ["Deleted Items"] node=8062 PC3602=Some("Integer32(0)") PC3603=Some("Integer32(0)") rows=0 unread_recount=0 parent_row[3602=Integer32(0) 3603=Integer32(0) 3001=U"Deleted Items" 360A=Boolean(false)]
+HIER-TABLE of ["Deleted Items"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["Inbox"] node=8082 PC3602=Some("Integer32(3)") PC3603=Some("Integer32(2)") rows=3 unread_recount=2 parent_row[3602=Integer32(3) 3603=Integer32(2) 3001=U"Inbox" 360A=Boolean(false)]
+HIER-TABLE of ["Inbox"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+TC-COLUMN 0017 (B1) compared=3 mismatched=0
+TC-COLUMN 001A compared=3 mismatched=0
+TC-COLUMN 0036 compared=3 mismatched=0
+TC-COLUMN 0037 compared=3 mismatched=0
+TC-COLUMN 0039 (B1) compared=3 mismatched=0
+TC-COLUMN 0042 compared=3 mismatched=0
+TC-COLUMN 0057 compared=3 mismatched=0
+TC-COLUMN 0058 compared=3 mismatched=0
+TC-COLUMN 0070 compared=3 mismatched=0
+TC-COLUMN 0071 compared=3 mismatched=0
+TC-COLUMN 0E03 compared=3 mismatched=0
+TC-COLUMN 0E04 compared=3 mismatched=0
+TC-COLUMN 0E06 (B1) compared=3 mismatched=0
+TC-COLUMN 0E07 (B1) compared=3 mismatched=0
+TC-COLUMN 0E08 compared=3 mismatched=0
+TC-COLUMN 0E17 compared=3 mismatched=0
+TC-COLUMN 0E30 compared=3 mismatched=0
+TC-COLUMN 0E33 compared=3 mismatched=0
+TC-COLUMN 0E34 compared=3 mismatched=0
+TC-COLUMN 0E38 compared=3 mismatched=0
+TC-COLUMN 0E3C compared=3 mismatched=0
+TC-COLUMN 0E3D compared=3 mismatched=0
+TC-COLUMN 1097 compared=3 mismatched=0
+TC-COLUMN 3008 (B1) compared=3 mismatched=0
+TC-COLUMN 3013 compared=3 mismatched=0
+TC-COLUMN 65C6 compared=3 mismatched=0
+MESSAGES 3 unread=2 without_0039=3
+RESULT mismatches=0

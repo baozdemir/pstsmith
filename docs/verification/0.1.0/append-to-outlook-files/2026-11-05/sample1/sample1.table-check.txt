@@ -1,0 +1,60 @@
+HIER-TABLE of []: columns=23 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=true rows=2
+FOLDER ["Deleted Items"] node=8062 PC3602=Some("Integer32(0)") PC3603=Some("Integer32(0)") rows=0 unread_recount=0 parent_row[3602=Integer32(0) 3603=Integer32(0) 3001=U"Deleted Items" 360A=Boolean(false)]
+HIER-TABLE of ["Deleted Items"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["Sample1"] node=8082 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(0)") rows=1 unread_recount=0 parent_row[3602=Integer32(1) 3603=Integer32(0) 3001=U"Sample1" 360A=Boolean(false)]
+HIER-TABLE of ["Sample1"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+TC-COLUMN 0015 compared=1 mismatched=0
+TC-COLUMN 0017 (B1) compared=1 mismatched=0
+TC-COLUMN 001A compared=1 mismatched=0
+TC-COLUMN 0030 compared=1 mismatched=0
+TC-COLUMN 0036 compared=1 mismatched=0
+TC-COLUMN 0037 compared=1 mismatched=0
+TC-COLUMN 0039 (B1) compared=1 mismatched=0
+TC-COLUMN 0042 compared=1 mismatched=0
+TC-COLUMN 0057 compared=1 mismatched=0
+TC-COLUMN 0058 compared=1 mismatched=0
+TC-COLUMN 0070 compared=1 mismatched=0
+TC-COLUMN 0071 compared=1 mismatched=0
+TC-COLUMN 0E03 compared=1 mismatched=0
+TC-COLUMN 0E04 compared=1 mismatched=0
+TC-COLUMN 0E06 (B1) compared=1 mismatched=0
+TC-COLUMN 0E07 (B1) compared=1 mismatched=0
+TC-COLUMN 0E08 compared=1 mismatched=0
+TC-COLUMN 0E17 compared=1 mismatched=1
+TC-COLUMN 0E2B compared=1 mismatched=0
+TC-COLUMN 0E30 compared=1 mismatched=0
+TC-COLUMN 0E33 compared=1 mismatched=0
+TC-COLUMN 0E34 compared=1 mismatched=0
+TC-COLUMN 0E38 compared=1 mismatched=0
+TC-COLUMN 0E3C compared=1 mismatched=0
+TC-COLUMN 0E3D compared=1 mismatched=0
+TC-COLUMN 0EA2 compared=1 mismatched=0
+TC-COLUMN 1035 compared=1 mismatched=0
+TC-COLUMN 1080 compared=1 mismatched=0
+TC-COLUMN 1090 compared=1 mismatched=0
+TC-COLUMN 1095 compared=1 mismatched=0
+TC-COLUMN 1097 compared=1 mismatched=0
+TC-COLUMN 3008 (B1) compared=1 mismatched=0
+TC-COLUMN 300B (B1) compared=1 mismatched=0
+TC-COLUMN 3013 compared=1 mismatched=1
+TC-COLUMN 3602 compared=1 mismatched=0
+TC-COLUMN 65C6 compared=1 mismatched=0
+TC-COLUMN 6E01 compared=1 mismatched=0
+TC-COLUMN 8010 compared=1 mismatched=0
+TC-COLUMN 8011 compared=1 mismatched=0
+TC-COLUMN 8012 compared=1 mismatched=0
+TC-COLUMN 8013 compared=1 mismatched=0
+TC-COLUMN 8014 compared=1 mismatched=0
+TC-COLUMN 8015 compared=1 mismatched=0
+TC-COLUMN 8016 compared=1 mismatched=0
+TC-COLUMN 8017 compared=1 mismatched=0
+TC-COLUMN 8018 compared=1 mismatched=0
+TC-COLUMN 8019 compared=1 mismatched=0
+TC-COLUMN 801A compared=1 mismatched=0
+TC-COLUMN 801B compared=1 mismatched=0
+TC-COLUMN 801C compared=1 mismatched=0
+TC-COLUMN 801D compared=1 mismatched=0
+TC-COLUMN 801E compared=1 mismatched=0
+TC-COLUMN 801F compared=1 mismatched=0
+MESSAGES 1 unread=0 without_0039=0
+RESULT mismatches=0

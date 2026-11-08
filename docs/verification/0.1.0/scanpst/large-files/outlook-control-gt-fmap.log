@@ -1,0 +1,41 @@
+
+Microsoft (R) Inbox Repair Tool
+© 2021 Microsoft Corporation.  All rights reserved.
+
+Version 16.0.20527.20088
+
+
+**Beginning NDB recovery
+
+  **Attempting to open database
+
+  **Attempting to validate header
+
+  **Attempting to validate AMap
+
+  **Attempting to validate BBT
+
+  **Attempting to validate NBT
+
+  **Attempting to validate BBT refcounts
+
+    ??Couldn't find BBT entry in the RBT (B4)
+
+  **Attempting to validate header NID high-water marks
+
+**Beginning PST/OST recovery
+
+  **Attempting to recover all top-level objects
+
+    **Store created by build: 162.527
+
+  **Attempting to walk all folders
+
+  **Attempting to locate any orphaned folders/messages
+
+  **Performing final HMP validation
+
+  **Attempting to check top-level objects for consistency
+
+  **Updating folder hierarchy
+

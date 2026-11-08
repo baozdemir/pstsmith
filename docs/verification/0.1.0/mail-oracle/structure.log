@@ -1,0 +1,3 @@
+$ pstsmith convert <each mail fixture> -o out/<case>.pst; sh tests/oracle/structure.sh out/*.pst
+8 files checked
+exit status: 0

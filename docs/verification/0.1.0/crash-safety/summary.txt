@@ -1,0 +1,1 @@
+{"kills": 500, "passed": 500, "old_state": 212, "new_state": 288, "map_marked_invalid": 317, "reopened": 500}

@@ -1,0 +1,15 @@
+$ cargo test -p pstsmith --test fixtures --release --locked --offline
+warning: stripping debug info with `rust-objcopy` failed: signal: 6 (SIGABRT)
+  |
+  = note: dyld[38457]: Library not loaded: @rpath/libLLVM.dylib
+            Referenced from: <D6B3C499-A2AF-3E42-8F77-C42BD658AAB5> <workspace>/toolchains/rust/lib/rustlib/aarch64-apple-darwin/bin/rust-objcopy
+            Reason: tried: '<workspace>/toolchains/rust/lib/rustlib/aarch64-apple-darwin/bin/../lib/libLLVM.dylib' (no such file), '<workspace>/toolchains/rust/lib/rustlib/aarch64-apple-darwin/bin/../lib/libLLVM.dylib' (no such file), '<scratch>/pstsmith-v010-target/release/deps/libLLVM.dylib' (no such file), '<home>/lib/libLLVM.dylib' (no such file), '/usr/local/lib/libLLVM.dylib' (no such file), '/usr/lib/libLLVM.dylib' (no such file, not in dyld cache)
+          
+
+warning: `pstsmith` (test "fixtures") generated 1 warning
+
+running 1 test
+test fixtures_give_the_expected_bytes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.73s
+

@@ -1,0 +1,60 @@
+Exchange MIME reader: 46 messages; Purview import of pstsmith's PST: 46 messages
+  diff:body_text: 4
+  diff:categories: 3
+  diff:file_attachments: 7
+  extra: 4
+  missing: 4
+  paired: 42
+  same:bcc: 42
+  same:body_text: 38
+  same:categories: 39
+  same:cc: 42
+  same:file_attachments: 35
+  same:importance: 42
+  same:item_attachments: 42
+  same:subject: 42
+  same:to: 42
+
+categories | At work | [] | ['Clients']
+categories | Takeout unread | [] | ['Starred']
+categories | Takeout archived | [] | ['Projects 2026', 'Receipts']
+file_attachments | Signed message | [('smime.p7m', False, 'f572c8285d360f29c581142060bbc34e90ed510a8bd9f172af6b995860ba89a5')] | [('smime.p7m', False, '26ad591df4e9080c6bd90b0bba26edc91c43cb0e1516359f810ded5d20703d8d')]
+file_attachments | Read: Synthetic | [] | [('attachment-1.txt', False, 'd65bf770e6398cb665f26a3aedb45e48cd5e6def8a2816782db96aaf090e3738')]
+body_text | Read: Synthetic | Your message
+
+   To:
+   Subject: Read: Synthetic
+   Sent: Thursday, November 5, 2026 7:48:45 AM UTC
+
+ was read on Monday, January 1, 2024 11:00:00 AM UTC. | Read receipt, synthetic.
+file_attachments | Undeliverable: Synthetic | [] | [('attachment-1.txt', False, 'c165d347469b867e4e9fdc73c24905525bee5a9e82b18c7345149e1766fb56af')]
+body_text | Undeliverable: Synthetic | Delivery has failed to these recipients or groups:
+
+unknown@example.invalid<mailto:unknown@example.invalid>
+The address you sent your message to wasn't found at the destination domain. It might be misspelled or it might not exist. Try to fix the problem by doing one or more of the following:
+
+  1.   | Delivery report, synthetic.
+file_attachments | Undeliverable: Synthetic | [] | [('attachment-1.txt', False, 'a55482362944159c906552994b4e177018c409b2dacf7902ef1174e45746ea3d')]
+body_text | Undeliverable: Synthetic | Delivery has failed to these recipients or groups:
+
+unknown@example.invalid<mailto:unknown@example.invalid>
+The address you sent your message to wasn't found at the destination domain. It might be misspelled or it might not exist. Try to fix the problem by doing one or more of the following:
+
+  1.   | Delivery report, synthetic.
+file_attachments | Undeliverable: Synthetic | [] | [('attachment-1.txt', False, 'a55482362944159c906552994b4e177018c409b2dacf7902ef1174e45746ea3d')]
+body_text | Undeliverable: Synthetic | Delivery has failed to these recipients or groups:
+
+unknown@example.invalid<mailto:unknown@example.invalid>
+The address you sent your message to wasn't found at the destination domain. It might be misspelled or it might not exist. Try to fix the problem by doing one or more of the following:
+
+  1.   | Delivery report, synthetic.
+missing from the PST import | Delivered: Undeliverable: Synthetic | <MAILBOXSERVERFBB65E9579B341C01490EF772@MAILBOXSERVER.region.prod.outlook.com>
+missing from the PST import | Not read: Read: Synthetic | <MAILBOXSERVERC0780DD451C8AF943EFDEF772@MAILBOXSERVER.region.prod.outlook.com>
+missing from the PST import | Delivery delayed:Undeliverable: Synthetic | <MAILBOXSERVERD04229941BFCD339CC58EF772@MAILBOXSERVER.region.prod.outlook.com>
+missing from the PST import | None | <MAILBOXSERVERFEE22F5B44A555B2BE7DEF772@MAILBOXSERVER.region.prod.outlook.com>
+file_attachments | Attachments | [('ATT00001.ics', False, 'fd31462d01c067aa1d9808b5f85c4e34ab33859caf3c4791f20d92c54612b3f6'), ('notlar.txt', False, 'cd2e2b84c8ba004fa12d226c5a860bb93a40524abf84a383497f6fed7dcca010'), ('résumé.pdf', False, '3cf7d2f974726b8cf563019d202e41ac808b2db80e654dadc7d62722b04e6665')] | [('attachment-4.ics', False, 'fd31462d01c067aa1d9808b5f85c4e34ab33859caf3c4791f20d92c54612b3f6'), ('notlar.txt', False, 'cd2e2b84c8ba004fa12d226c5a860bb93a40524abf84a383497f6fed7dcca010'), ('résumé.pdf', False, '3cf7d2f974726b8cf563019d202e41ac808b2db80e654dadc7d62722b04e6665'), ('winmail.dat', Fals
+file_attachments | Inline image | [('ATT00001.png', True, '8cf8513dd0fb04730604640ba5a61a5277b0bb0f3f446b5047b7ad17438e0732')] | [('attachment-1.png', True, '8cf8513dd0fb04730604640ba5a61a5277b0bb0f3f446b5047b7ad17438e0732')]
+only in the PST import | Not read:  | <MAILBOXSERVER8661573F3CC2EC7EB925EF772@MAILBOXSERVER.region.prod.outlook.com>
+only in the PST import | Delivered:  | <MAILBOXSERVERB200F706DED3CB78D1FEEF772@MAILBOXSERVER.region.prod.outlook.com>
+only in the PST import | Delivery delayed: | <MAILBOXSERVER14E60E5184107B4C5AFFEF772@MAILBOXSERVER.region.prod.outlook.com>
+only in the PST import |  | <MAILBOXSERVER0CF65B27DCF83C6BAFAEEF772@MAILBOXSERVER.region.prod.outlook.com>

@@ -1,0 +1,7 @@
+
+running 1 test
+test mbox_streams_without_reading_whole_file ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 32 filtered out; finished in 7.91s
+
+exit 0

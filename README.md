@@ -37,12 +37,15 @@ pstsmith: wrote 7 messages to gmail.pst
   accepted every file with 0 bad items. The mail input's mapping is checked against Python's `email` reading of the
   sources and against Exchange Online's own MIME reader. [How it was verified](docs/VERIFICATION.md).
 - **Read back by two independent readers,** libpff and XstReader, field by field.
-- **Crash-safe appends.** Every commit is atomic: a crash or a full disk leaves the file at its last committed state.
-- **Bounded memory.** The writer streams attachments from disk: 128,000 messages in one folder took 17 MB. Mail
+- **Crash-safe appends.** A commit takes effect with one header write. Killed at 500 random moments while appending,
+  the process left a file at a committed state every time, and a full disk stops an append with an error and leaves
+  the last commit ([details](docs/VERIFICATION.md#recorded-checks-of-the-writer-october-november-2026)). Process kills
+  were tested, not power cuts.
+- **Bounded memory.** The writer streams attachments from disk: 128,000 messages in one folder took 16 MB. Mail
   input is read one message at a time, so memory follows the largest message, not the size of the input.
 - **Size-limited parts** (1, 2, 5 or 10 GB) for imports with per-file limits.
-- **Same input, same bytes:** the release builds for all seven targets (Linux, macOS, Windows) reproduce the test
-  fixtures' files byte for byte, and CI checks the fixtures' hashes on Linux, macOS and Windows.
+- **Same input, same bytes:** the release builds for all seven targets (Linux, macOS, Windows) reproduce the mail
+  fixtures' files byte for byte, and CI checks every fixture's hash on Linux, macOS and Windows.
 - **No part dropped.** Every MIME part becomes a body or an attachment and the original headers are kept; what cannot
   be shown as mail (an unreadable message, an attached e-mail nested too deep) is kept as an `.eml` attachment and
   reported.
@@ -146,7 +149,7 @@ documentation we could not check on that point. Corrections are welcome.
 
 | | Platforms tested in CI | Crash safety | Compaction | Published checks by other programs | License |
 |---|---|---|---|---|---|
-| **pstsmith** | Linux, macOS, Windows | atomic commits; every crash state replayed ([details][v]) | – (freed space is reused) | SCANPST, classic Outlook, a Microsoft 365 import, libpff, XstReader ([details][v]) | MIT |
+| **pstsmith** | Linux, macOS, Windows | atomic commits; 500 process kills and a full disk tested ([details][v]) | – (freed space is reused) | SCANPST, classic Outlook, a Microsoft 365 import, libpff, XstReader ([details][v]) | MIT |
 | [outlook-pst-rw][rw] | not stated | not stated | [– (holes not reclaimed)][rw] | not stated | [MIT][rw] |
 | [microsoft/outlook-pst-rs][ms] | not stated | – (reader) | – | – | [MIT][ms] |
 | [libpff][pff] | not stated | – (reader) | – | – | [LGPL-3.0+][pff] |

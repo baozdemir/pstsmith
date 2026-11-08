@@ -1,0 +1,99 @@
+totals: {
+ "body.exact": 414,
+ "body.not_exact": 750,
+ "diff:file_attachments.bytes": 8,
+ "diff:file_attachments.names": 14,
+ "diff:importance": 3,
+ "diff:recipients.bcc": 3,
+ "diff:recipients.cc": 3,
+ "diff:recipients.to": 5,
+ "diff:sender": 4,
+ "diff:subject": 14,
+ "missing": 4,
+ "paired": 1167,
+ "same:file_attachments.bytes": 1159,
+ "same:file_attachments.names": 1153,
+ "same:importance": 1164,
+ "same:is_read": 1167,
+ "same:item_attachments.count": 1167,
+ "same:recipients.bcc": 1164,
+ "same:recipients.cc": 1164,
+ "same:recipients.to": 1162,
+ "same:sender": 1163,
+ "same:subject": 1153
+}
+
+== h-correctness: {'body (exact sha differs; Exchange text conversion)': 32, 'file_attachments.names': 1, 'subject': 1}
+   ["file_attachments.names", "Synthetic 000003 Türkçe 日本語", ["small.bin"], []]
+   ["subject", "Synthetic 000007 Türkçe 日本語 LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LO", "Synthetic 000007 Türkçe 日本語 LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG 
+
+== h-correctness-as-v2: {'body (exact sha differs; Exchange text conversion)': 32, 'file_attachments.names': 1, 'subject': 1}
+   ["file_attachments.names", "Synthetic 000003 Türkçe 日本語", ["small.bin"], []]
+   ["subject", "Synthetic 000007 Türkçe 日本語 LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LO", "Synthetic 000007 Türkçe 日本語 LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG 
+
+== h-empty-names: {'body (exact sha differs; Exchange text conversion)': 2}
+
+== h-folder-identity: {'body (exact sha differs; Exchange text conversion)': 11}
+
+== h-folder-identity-as-v2: {'body (exact sha differs; Exchange text conversion)': 11}
+
+== h-inline-image: {'file_attachments.names': 2, 'body (exact sha differs; Exchange text conversion)': 2}
+   ["file_attachments.names", "Inline PNG in body", ["logo.png"], []]
+   ["file_attachments.names", "Inline PNG not referenced", ["logo.png"], []]
+
+== h-interleaved-as-v2: {'body (exact sha differs; Exchange text conversion)': 600}
+
+== h-large-cells: {'body (exact sha differs; Exchange text conversion)': 3, 'file_attachments.names': 1, 'file_attachments.bytes': 1}
+   ["file_attachments.names", "Long attachment name", [""], ["nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
+   ["file_attachments.bytes", "Long attachment name", [], [["nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
+
+== h-large_attachment: {'missing in mailbox': 1}
+   ["missing in mailbox", "Synthetic 000000 Türkçe 日本語", "<large_attachment-000000@example.invalid>"]
+
+== h-mail-complete: {'body (exact sha differs; Exchange text conversion)': 7, 'file_attachments.names': 1, 'missing in mailbox': 1, 'subject': 1}
+   ["file_attachments.names", "Synthetic 000003 Türkçe 日本語", ["small.bin"], []]
+   ["missing in mailbox", "Synthetic 000006 Türkçe 日本語", "<correctness-000006@example.invalid>"]
+   ["subject", "Synthetic 000007 Türkçe 日本語 LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LO", "Synthetic 000007 Türkçe 日本語 LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG 
+
+== h-mail-folders: {'body (exact sha differs; Exchange text conversion)': 7, 'subject': 1, 'sender': 1}
+   ["subject", "Synthetic 000007 Türkçe 日本語 LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LO", "Synthetic 000007 Türkçe 日本語 LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG 
+   ["sender", "Synthetic 000000 Türkçe 日本語", ["", ""], [null, ""]]
+
+== h-meetings: {'body (exact sha differs; Exchange text conversion)': 10, 'file_attachments.names': 1}
+   ["file_attachments.names", "Daily", ["small.bin"], []]
+
+== h-named: {'body (exact sha differs; Exchange text conversion)': 3, 'missing in mailbox': 1}
+   ["missing in mailbox", "Many names", "<correctness-000004@example.invalid>"]
+
+== h-reports: {'subject': 9, 'recipients.to': 2, 'body (exact sha differs; Exchange text conversion)': 1}
+   ["subject", "Synthetic 000000 Türkçe 日本語", "Synthetic 000000 Türkçe 日本語", "Undeliverable: "]
+   ["recipients.to", "Synthetic 000000 Türkçe 日本語", [["full@example.invalid", "full@example.invalid"], ["unknown@example.invalid", "unknown@example.invalid"]], [["unknown@example.invalid", "unknown@example.invalid"]]]
+   ["subject", "Synthetic 000001 Türkçe 日本語", "Synthetic 000001 Türkçe 日本語", "Delivered: "]
+   ["subject", "Synthetic 000002 Türkçe 日本語", "Synthetic 000002 Türkçe 日本語", "Delivery delayed:"]
+   ["subject", "Synthetic 000003 Türkçe 日本語", "Synthetic 000003 Türkçe 日本語", "Read: "]
+   ["subject", "Synthetic 000004 Türkçe 日本語", "Synthetic 000004 Türkçe 日本語", "Not read: "]
+   ["subject", "Synthetic 000005 Türkçe 日本語", "Synthetic 000005 Türkçe 日本語", "Undeliverable: "]
+   ["subject", "Synthetic 000006 Türkçe 日本語", "Synthetic 000006 Türkçe 日本語", "Undeliverable: "]
+   ["subject", "Synthetic 000007 Türkçe 日本語 LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LO", "Synthetic 000007 Türkçe 日本語 LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG 
+   ["subject", "Synthetic 000000 Türkçe 日本語", "Synthetic 000000 Türkçe 日本語", "Undeliverable: "]
+   ["recipients.to", "Synthetic 000000 Türkçe 日本語", [["unknown@example.invalid", "unknown@example.invalid"]], [["full@example.invalid", "full@example.invalid"], ["unknown@example.invalid", "unknown@example.invalid"]]]
+
+== h-smime: {'sender': 3, 'recipients.to': 3, 'recipients.cc': 3, 'recipients.bcc': 3, 'importance': 3, 'file_attachments.names': 6, 'file_attachments.bytes': 6, 'body (exact sha differs; Exchange text conversion)': 2}
+   ["sender", "Encrypted", [null, ""], ["Sentetik Gönderen", "sender@example.invalid"]]
+   ["recipients.to", "Encrypted", [], [["To User", "to@example.invalid"]]]
+   ["recipients.cc", "Encrypted", [], [["CC User", "cc@example.invalid"]]]
+   ["recipients.bcc", "Encrypted", [], [["BCC User", "bcc@example.invalid"]]]
+   ["importance", "Encrypted", null, "high"]
+   ["file_attachments.names", "Encrypted", [], ["smime.p7m"]]
+   ["file_attachments.bytes", "Encrypted", [], [["smime.p7m", "03544ea44c85442762a00651471924b8c5284f027fc73a28e8fcb7ad4f1ae2f4"]]]
+   ["sender", "Secure receipt class", [null, ""], ["Sentetik Gönderen", "sender@example.invalid"]]
+   ["recipients.to", "Secure receipt class", [], [["To User", "to@example.invalid"]]]
+   ["recipients.cc", "Secure receipt class", [], [["CC User", "cc@example.invalid"]]]
+   ["recipients.bcc", "Secure receipt class", [], [["BCC User", "bcc@example.invalid"]]]
+   ["importance", "Secure receipt class", null, "low"]
+
+== h-split: {'body (exact sha differs; Exchange text conversion)': 27, 'subject': 1, 'file_attachments.names': 1, 'file_attachments.bytes': 1, 'missing in mailbox': 1}
+   ["subject", "Larger than a file", "Larger than a file", "Split 22"]
+   ["file_attachments.names", "Larger than a file", ["large-64MiB.bin"], ["split-22.bin"]]
+   ["file_attachments.bytes", "Larger than a file", [], [["split-22.bin", "5c34f691e37751b6f44d1c66b20fe7e3dc65f70530d6c58535aa58a5e7b1613c"]]]
+   ["missing in mailbox", "Split 22", "<correctness-000006@example.invalid>"]

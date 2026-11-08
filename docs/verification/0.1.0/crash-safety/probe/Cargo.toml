@@ -1,0 +1,11 @@
+[package]
+name = "append-probe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+pstsmith = { path = "../../../../../crates/pstsmith", default-features = false }
+
+# Not a member of the repository's workspace.
+[workspace]

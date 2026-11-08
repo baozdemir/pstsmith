@@ -1,0 +1,24 @@
+ 0
+/SPAM Search Folder 2 0
+/Top of Outlook data file 0
+/Top of Outlook data file/Deleted Items 0
+/Top of Outlook data file/Inbox 8
+    'GT 13 plain text by the object model' {'delivery_time': '2026-10-30T17:24:12.368000'}
+    'GT 14 HTML by the object model' {'delivery_time': '2026-10-30T17:24:12.489000'}
+    'GT 09 one attached e-mail' {'delivery_time': '2026-10-30T17:24:12.711000'}
+    'GT 10 two levels of attached e-mails' {'delivery_time': '2026-10-30T17:24:12.927000'}
+    'GT 11 file attachments by the object model' {'delivery_time': '2026-10-30T17:24:13.087000'}
+    '<probe-1@example.invalid>' {'sender_name': 'probe', 'delivery_time': '2025-08-18T14:13:20', 'message_id': '<probe-1@example.invalid>'}
+    '<probe-2@example.invalid>' {'sender_name': 'probe', 'delivery_time': '2025-08-18T14:13:20', 'message_id': '<probe-2@example.invalid>'}
+    '<probe-3@example.invalid>' {'sender_name': 'probe', 'delivery_time': '2025-08-18T14:13:20', 'message_id': '<probe-3@example.invalid>'}
+/Top of Outlook data file/Inbox/Sub 0
+/Top of Outlook data file/Drafts 1
+    'GT 12 draft' {'delivery_time': '2026-10-30T17:24:13.159000'}
+/Top of Outlook data file/Empty 0
+/Top of Outlook data file/Empty/Nested empty 0
+/Top of Outlook data file/Klasör 0
+/Top of Outlook data file/Sources 3
+    'GT 04 inner' {'delivery_time': '2026-10-30T17:24:12.587000'}
+    'GT 04 inner' {'delivery_time': '2026-10-30T17:24:12.780000'}
+    'GT 02 HTML and text' {'delivery_time': '2026-10-30T17:24:12.867000'}
+/Search Root 0

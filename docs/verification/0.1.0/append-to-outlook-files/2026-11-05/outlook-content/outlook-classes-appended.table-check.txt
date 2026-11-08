@@ -1,0 +1,81 @@
+HIER-TABLE of []: columns=25 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=25
+FOLDER ["Deleted Items"] node=8062 PC3602=Some("Integer32(0)") PC3603=Some("Integer32(0)") rows=0 unread_recount=0 parent_row[3602=Integer32(0) 3603=Integer32(0) 3001=U"Deleted Items" 360A=Boolean(false)]
+HIER-TABLE of ["Deleted Items"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-reports 01 REPORT.IPM.Note.NDR"] node=8082 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(0)") rows=1 unread_recount=0 parent_row[3602=Integer32(1) 3603=Integer32(0) 3001=U"h-reports 01 REPORT.IPM.Note.NDR" 360A=Boolean(false)]
+HIER-TABLE of ["h-reports 01 REPORT.IPM.Note.NDR"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-reports 02 REPORT.IPM.Note.DR"] node=80A2 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(1)") rows=1 unread_recount=1 parent_row[3602=Integer32(1) 3603=Integer32(1) 3001=U"h-reports 02 REPORT.IPM.Note.DR" 360A=Boolean(false)]
+HIER-TABLE of ["h-reports 02 REPORT.IPM.Note.DR"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-reports 03 REPORT.IPM.Note.Delayed.DR"] node=80C2 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(0)") rows=1 unread_recount=0 parent_row[3602=Integer32(1) 3603=Integer32(0) 3001=U"h-reports 03 REPORT.IPM.Note.Delayed.DR" 360A=Boolean(false)]
+HIER-TABLE of ["h-reports 03 REPORT.IPM.Note.Delayed.DR"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-reports 04 REPORT.IPM.Note.IPNRN"] node=80E2 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(1)") rows=1 unread_recount=1 parent_row[3602=Integer32(1) 3603=Integer32(1) 3001=U"h-reports 04 REPORT.IPM.Note.IPNRN" 360A=Boolean(false)]
+HIER-TABLE of ["h-reports 04 REPORT.IPM.Note.IPNRN"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-reports 05 REPORT.IPM.Note.IPNNRN"] node=8102 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(0)") rows=1 unread_recount=0 parent_row[3602=Integer32(1) 3603=Integer32(0) 3001=U"h-reports 05 REPORT.IPM.Note.IPNNRN" 360A=Boolean(false)]
+HIER-TABLE of ["h-reports 05 REPORT.IPM.Note.IPNNRN"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-reports 06 REPORT.IPM.Note.NDR"] node=8122 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(1)") rows=1 unread_recount=1 parent_row[3602=Integer32(1) 3603=Integer32(1) 3001=U"h-reports 06 REPORT.IPM.Note.NDR" 360A=Boolean(false)]
+HIER-TABLE of ["h-reports 06 REPORT.IPM.Note.NDR"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-reports 07 REPORT.IPM.Note.SMIME.MultipartSigned.NDR"] node=8142 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(0)") rows=1 unread_recount=0 parent_row[3602=Integer32(1) 3603=Integer32(0) 3001=U"h-reports 07 REPORT.IPM.Note.SMIME.MultipartSigned.NDR" 360A=Boolean(false)]
+HIER-TABLE of ["h-reports 07 REPORT.IPM.Note.SMIME.MultipartSigned.NDR"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-reports 08 IPM.Note"] node=8162 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(1)") rows=1 unread_recount=1 parent_row[3602=Integer32(1) 3603=Integer32(1) 3001=U"h-reports 08 IPM.Note" 360A=Boolean(false)]
+HIER-TABLE of ["h-reports 08 IPM.Note"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-reports 09 REPORT.IPM.Schedule.Meeting.Request.NDR"] node=8182 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(0)") rows=1 unread_recount=0 parent_row[3602=Integer32(1) 3603=Integer32(0) 3001=U"h-reports 09 REPORT.IPM.Schedule.Meeting.Request.NDR" 360A=Boolean(false)]
+HIER-TABLE of ["h-reports 09 REPORT.IPM.Schedule.Meeting.Request.NDR"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-meetings 01 IPM.Schedule.Meeting.Request"] node=81A2 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(0)") rows=1 unread_recount=0 parent_row[3602=Integer32(1) 3603=Integer32(0) 3001=U"h-meetings 01 IPM.Schedule.Meeting.Request" 360A=Boolean(false)]
+HIER-TABLE of ["h-meetings 01 IPM.Schedule.Meeting.Request"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-meetings 02 IPM.Schedule.Meeting.Request"] node=81C2 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(1)") rows=1 unread_recount=1 parent_row[3602=Integer32(1) 3603=Integer32(1) 3001=U"h-meetings 02 IPM.Schedule.Meeting.Request" 360A=Boolean(false)]
+HIER-TABLE of ["h-meetings 02 IPM.Schedule.Meeting.Request"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-meetings 03 IPM.Schedule.Meeting.Request"] node=81E2 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(0)") rows=1 unread_recount=0 parent_row[3602=Integer32(1) 3603=Integer32(0) 3001=U"h-meetings 03 IPM.Schedule.Meeting.Request" 360A=Boolean(false)]
+HIER-TABLE of ["h-meetings 03 IPM.Schedule.Meeting.Request"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-meetings 04 IPM.Schedule.Meeting.Request"] node=8202 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(1)") rows=1 unread_recount=1 parent_row[3602=Integer32(1) 3603=Integer32(1) 3001=U"h-meetings 04 IPM.Schedule.Meeting.Request" 360A=Boolean(false)]
+HIER-TABLE of ["h-meetings 04 IPM.Schedule.Meeting.Request"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-meetings 05 IPM.Schedule.Meeting.Resp.Pos"] node=8222 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(0)") rows=1 unread_recount=0 parent_row[3602=Integer32(1) 3603=Integer32(0) 3001=U"h-meetings 05 IPM.Schedule.Meeting.Resp.Pos" 360A=Boolean(false)]
+HIER-TABLE of ["h-meetings 05 IPM.Schedule.Meeting.Resp.Pos"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-meetings 06 IPM.Schedule.Meeting.Resp.Tent"] node=8242 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(1)") rows=1 unread_recount=1 parent_row[3602=Integer32(1) 3603=Integer32(1) 3001=U"h-meetings 06 IPM.Schedule.Meeting.Resp.Tent" 360A=Boolean(false)]
+HIER-TABLE of ["h-meetings 06 IPM.Schedule.Meeting.Resp.Tent"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-meetings 07 IPM.Schedule.Meeting.Resp.Neg"] node=8262 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(0)") rows=1 unread_recount=0 parent_row[3602=Integer32(1) 3603=Integer32(0) 3001=U"h-meetings 07 IPM.Schedule.Meeting.Resp.Neg" 360A=Boolean(false)]
+HIER-TABLE of ["h-meetings 07 IPM.Schedule.Meeting.Resp.Neg"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-meetings 08 IPM.Schedule.Meeting.Canceled"] node=8282 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(1)") rows=1 unread_recount=1 parent_row[3602=Integer32(1) 3603=Integer32(1) 3001=U"h-meetings 08 IPM.Schedule.Meeting.Canceled" 360A=Boolean(false)]
+HIER-TABLE of ["h-meetings 08 IPM.Schedule.Meeting.Canceled"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-meetings 09 IPM.Schedule.Meeting.Notification.Forward"] node=82A2 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(0)") rows=1 unread_recount=0 parent_row[3602=Integer32(1) 3603=Integer32(0) 3001=U"h-meetings 09 IPM.Schedule.Meeting.Notification.Forward" 360A=Boolean(false)]
+HIER-TABLE of ["h-meetings 09 IPM.Schedule.Meeting.Notification.Forward"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-meetings 10 IPM.Note"] node=82C2 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(0)") rows=1 unread_recount=0 parent_row[3602=Integer32(1) 3603=Integer32(0) 3001=U"h-meetings 10 IPM.Note" 360A=Boolean(false)]
+HIER-TABLE of ["h-meetings 10 IPM.Note"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-mail-folders 01 IPM.Note"] node=82E2 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(1)") rows=1 unread_recount=1 parent_row[3602=Integer32(1) 3603=Integer32(1) 3001=U"h-mail-folders 01 IPM.Note" 360A=Boolean(false)]
+HIER-TABLE of ["h-mail-folders 01 IPM.Note"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-mail-folders 02 IPM.Note"] node=8302 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(1)") rows=1 unread_recount=1 parent_row[3602=Integer32(1) 3603=Integer32(1) 3001=U"h-mail-folders 02 IPM.Note" 360A=Boolean(false)]
+HIER-TABLE of ["h-mail-folders 02 IPM.Note"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-mail-folders 03 REPORT.IPM.Note.NDR"] node=8322 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(1)") rows=1 unread_recount=1 parent_row[3602=Integer32(1) 3603=Integer32(1) 3001=U"h-mail-folders 03 REPORT.IPM.Note.NDR" 360A=Boolean(false)]
+HIER-TABLE of ["h-mail-folders 03 REPORT.IPM.Note.NDR"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["h-mail-folders 04 IPM.Note"] node=8342 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(0)") rows=1 unread_recount=0 parent_row[3602=Integer32(1) 3603=Integer32(0) 3001=U"h-mail-folders 04 IPM.Note" 360A=Boolean(false)]
+HIER-TABLE of ["h-mail-folders 04 IPM.Note"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["Inbox"] node=8362 PC3602=Some("Integer32(3)") PC3603=Some("Integer32(2)") rows=3 unread_recount=2 parent_row[3602=Integer32(3) 3603=Integer32(2) 3001=U"Inbox" 360A=Boolean(false)]
+HIER-TABLE of ["Inbox"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+TC-COLUMN 0017 (B1) compared=26 mismatched=0
+TC-COLUMN 001A compared=26 mismatched=0
+TC-COLUMN 0036 compared=26 mismatched=0
+TC-COLUMN 0037 compared=26 mismatched=0
+TC-COLUMN 0039 (B1) compared=26 mismatched=0
+TC-COLUMN 0042 compared=26 mismatched=0
+TC-COLUMN 0057 compared=26 mismatched=0
+TC-COLUMN 0058 compared=26 mismatched=0
+TC-COLUMN 0070 compared=26 mismatched=0
+TC-COLUMN 0071 compared=26 mismatched=0
+TC-COLUMN 0E03 compared=26 mismatched=0
+TC-COLUMN 0E04 compared=26 mismatched=0
+TC-COLUMN 0E06 (B1) compared=26 mismatched=0
+TC-COLUMN 0E07 (B1) compared=26 mismatched=0
+TC-COLUMN 0E08 compared=26 mismatched=0
+TC-COLUMN 0E17 compared=26 mismatched=23
+TC-COLUMN 0E30 compared=26 mismatched=0
+TC-COLUMN 0E33 compared=26 mismatched=0
+TC-COLUMN 0E34 compared=26 mismatched=0
+TC-COLUMN 0E38 compared=26 mismatched=0
+TC-COLUMN 0E3C compared=26 mismatched=0
+TC-COLUMN 0E3D compared=26 mismatched=0
+TC-COLUMN 1097 compared=26 mismatched=0
+TC-COLUMN 3008 (B1) compared=26 mismatched=0
+TC-COLUMN 3013 compared=26 mismatched=23
+TC-COLUMN 65C6 compared=26 mismatched=0
+TC-COLUMN 804B compared=23 mismatched=0
+TC-COLUMN 8068 compared=23 mismatched=0
+MESSAGES 26 unread=13 without_0039=3
+RESULT mismatches=0
