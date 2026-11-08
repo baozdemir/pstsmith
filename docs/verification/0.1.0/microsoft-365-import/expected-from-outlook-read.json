@@ -1,0 +1,276 @@
+{
+ "h-all-excluded": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 0
+  },
+  "messages": 0,
+  "messages_by_folder": {}
+ },
+ "h-correctness-as-v2": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 15,
+   "Inbox/Alt klasör": 8,
+   "Sent": 9
+  },
+  "messages": 32,
+  "messages_by_folder": {
+   "Inbox": 15,
+   "Inbox/Alt klasör": 8,
+   "Sent": 9
+  }
+ },
+ "h-correctness": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 15,
+   "Inbox/Alt klasör": 8,
+   "Sent": 9
+  },
+  "messages": 32,
+  "messages_by_folder": {
+   "Inbox": 15,
+   "Inbox/Alt klasör": 8,
+   "Sent": 9
+  }
+ },
+ "h-empty-names": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 2
+  },
+  "messages": 2,
+  "messages_by_folder": {
+   "Inbox": 2
+  }
+ },
+ "h-folder-identity-as-v2": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 1,
+   "inbox": 1,
+   "INBOX": 1,
+   "Klasör": 1,
+   "klasör": 1,
+   "KLASÖR": 1,
+   "A": 0,
+   "A/Sub": 2,
+   "B": 0,
+   "B/Sub": 1,
+   "Projects": 0,
+   "Projects/2026": 1,
+   "projects": 0,
+   "projects/2026": 1
+  },
+  "messages": 11,
+  "messages_by_folder": {
+   "Inbox": 1,
+   "inbox": 1,
+   "INBOX": 1,
+   "Klasör": 1,
+   "klasör": 1,
+   "KLASÖR": 1,
+   "A/Sub": 2,
+   "B/Sub": 1,
+   "Projects/2026": 1,
+   "projects/2026": 1
+  }
+ },
+ "h-folder-identity": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 1,
+   "inbox": 1,
+   "INBOX": 1,
+   "Klasör": 1,
+   "klasör": 1,
+   "KLASÖR": 1,
+   "A": 0,
+   "A/Sub": 2,
+   "B": 0,
+   "B/Sub": 1,
+   "Projects": 0,
+   "Projects/2026": 1,
+   "projects": 0,
+   "projects/2026": 1
+  },
+  "messages": 11,
+  "messages_by_folder": {
+   "Inbox": 1,
+   "inbox": 1,
+   "INBOX": 1,
+   "Klasör": 1,
+   "klasör": 1,
+   "KLASÖR": 1,
+   "A/Sub": 2,
+   "B/Sub": 1,
+   "Projects/2026": 1,
+   "projects/2026": 1
+  }
+ },
+ "h-folders-only": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 0,
+   "Archive": 0,
+   "Archive/2026": 0
+  },
+  "messages": 0,
+  "messages_by_folder": {}
+ },
+ "h-inline-image": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 3
+  },
+  "messages": 3,
+  "messages_by_folder": {
+   "Inbox": 3
+  }
+ },
+ "h-interleaved-as-v2": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 300,
+   "Sent": 300
+  },
+  "messages": 600,
+  "messages_by_folder": {
+   "Inbox": 300,
+   "Sent": 300
+  }
+ },
+ "h-large-cells": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 3
+  },
+  "messages": 3,
+  "messages_by_folder": {
+   "Inbox": 3
+  }
+ },
+ "h-large_attachment": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 1
+  },
+  "messages": 1,
+  "messages_by_folder": {
+   "Inbox": 1
+  }
+ },
+ "h-mail-complete": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 8,
+   "Inbox/Empty child": 0,
+   "Empty top": 0,
+   "Archive": 0,
+   "Archive/2025": 0,
+   "Archive/2025/Q1": 0
+  },
+  "messages": 8,
+  "messages_by_folder": {
+   "Inbox": 8
+  }
+ },
+ "h-mail-folders": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 4,
+   "Drafts": 2,
+   "Sent Items": 1,
+   "Deep": 0
+  },
+  "messages": 7,
+  "messages_by_folder": {
+   "Inbox": 4,
+   "Drafts": 2,
+   "Sent Items": 1
+  }
+ },
+ "h-meetings": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 10
+  },
+  "messages": 10,
+  "messages_by_folder": {
+   "Inbox": 10
+  }
+ },
+ "h-named": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 4
+  },
+  "messages": 4,
+  "messages_by_folder": {
+   "Inbox": 4
+  }
+ },
+ "h-r6-A-production": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 3
+  },
+  "messages": 3,
+  "messages_by_folder": {
+   "Inbox": 3
+  }
+ },
+ "h-reports": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 9
+  },
+  "messages": 9,
+  "messages_by_folder": {
+   "Inbox": 9
+  }
+ },
+ "h-smime": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 4,
+   "Signed": 3
+  },
+  "messages": 7,
+  "messages_by_folder": {
+   "Inbox": 4,
+   "Signed": 3
+  }
+ },
+ "h-split-many-small": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 266,
+   "Archive": 134,
+   "Empty": 0
+  },
+  "messages": 400,
+  "messages_by_folder": {
+   "Inbox": 266,
+   "Archive": 134
+  }
+ },
+ "h-split": {
+  "folders": {
+   "Deleted Items": 0,
+   "Inbox": 20,
+   "Archive": 1,
+   "Archive/2025": 7,
+   "Archive/Empty child": 0,
+   "Deep": 0,
+   "Empty top": 0
+  },
+  "messages": 28,
+  "messages_by_folder": {
+   "Inbox": 20,
+   "Archive": 1,
+   "Archive/2025": 7
+  }
+ }
+}

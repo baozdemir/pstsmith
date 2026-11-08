@@ -1,0 +1,45 @@
+HIER-TABLE of []: columns=25 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=true rows=6
+FOLDER ["Deleted Items"] node=8062 PC3602=Some("Integer32(0)") PC3603=Some("Integer32(0)") rows=0 unread_recount=0 parent_row[3602=Integer32(0) 3603=Integer32(0) 3001=U"Deleted Items" 360A=Boolean(false)]
+HIER-TABLE of ["Deleted Items"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["Inbox"] node=8082 PC3602=Some("Integer32(8)") PC3603=Some("Integer32(7)") rows=8 unread_recount=7 parent_row[3602=Integer32(8) 3603=Integer32(7) 3001=U"Inbox" 360A=Boolean(true)]
+HIER-TABLE of ["Inbox"]: columns=15 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=true rows=1
+FOLDER ["Inbox", "Sub"] node=80A2 PC3602=Some("Integer32(0)") PC3603=Some("Integer32(0)") rows=0 unread_recount=0 parent_row[3602=Integer32(0) 3603=Integer32(0) 3001=U"Sub" 360A=Boolean(false)]
+HIER-TABLE of ["Inbox", "Sub"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["Drafts"] node=80C2 PC3602=Some("Integer32(1)") PC3603=Some("Integer32(1)") rows=1 unread_recount=1 parent_row[3602=Integer32(1) 3603=Integer32(1) 3001=U"Drafts" 360A=Boolean(false)]
+HIER-TABLE of ["Drafts"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["Empty"] node=80E2 PC3602=Some("Integer32(0)") PC3603=Some("Integer32(0)") rows=0 unread_recount=0 parent_row[3602=Integer32(0) 3603=Integer32(0) 3001=U"Empty" 360A=Boolean(true)]
+HIER-TABLE of ["Empty"]: columns=15 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=true rows=1
+FOLDER ["Empty", "Nested empty"] node=8102 PC3602=Some("Integer32(0)") PC3603=Some("Integer32(0)") rows=0 unread_recount=0 parent_row[3602=Integer32(0) 3603=Integer32(0) 3001=U"Nested empty" 360A=Boolean(false)]
+HIER-TABLE of ["Empty", "Nested empty"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["Klasör"] node=8122 PC3602=Some("Integer32(0)") PC3603=Some("Integer32(0)") rows=0 unread_recount=0 parent_row[3602=Integer32(0) 3603=Integer32(0) 3001=U"Klasör" 360A=Boolean(false)]
+HIER-TABLE of ["Klasör"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+FOLDER ["Sources"] node=8142 PC3602=Some("Integer32(3)") PC3603=Some("Integer32(0)") rows=3 unread_recount=0 parent_row[3602=Integer32(3) 3603=Integer32(0) 3001=U"Sources" 360A=Boolean(false)]
+HIER-TABLE of ["Sources"]: columns=13 counter_columns=["3602:Integer32", "3603:Integer32"] rows_in_heap=false rows=0
+TC-COLUMN 0017 (B1) compared=12 mismatched=0
+TC-COLUMN 001A compared=12 mismatched=0
+TC-COLUMN 0036 compared=12 mismatched=0
+TC-COLUMN 0037 compared=12 mismatched=0
+TC-COLUMN 0039 (B1) compared=12 mismatched=0
+TC-COLUMN 0042 compared=12 mismatched=0
+TC-COLUMN 0057 compared=12 mismatched=0
+TC-COLUMN 0058 compared=12 mismatched=0
+TC-COLUMN 0070 compared=12 mismatched=0
+TC-COLUMN 0071 compared=12 mismatched=0
+TC-COLUMN 0E03 compared=12 mismatched=0
+TC-COLUMN 0E04 compared=12 mismatched=0
+TC-COLUMN 0E06 (B1) compared=12 mismatched=0
+TC-COLUMN 0E07 (B1) compared=12 mismatched=0
+TC-COLUMN 0E08 compared=12 mismatched=0
+TC-COLUMN 0E17 compared=12 mismatched=9
+TC-COLUMN 0E30 compared=12 mismatched=0
+TC-COLUMN 0E33 compared=12 mismatched=0
+TC-COLUMN 0E34 compared=12 mismatched=0
+TC-COLUMN 0E38 compared=12 mismatched=0
+TC-COLUMN 0E3C compared=12 mismatched=0
+TC-COLUMN 0E3D compared=12 mismatched=0
+TC-COLUMN 1097 compared=12 mismatched=0
+TC-COLUMN 3008 (B1) compared=12 mismatched=0
+TC-COLUMN 3013 compared=12 mismatched=9
+TC-COLUMN 65C6 compared=12 mismatched=0
+MESSAGES 12 unread=8 without_0039=12
+RESULT mismatches=0

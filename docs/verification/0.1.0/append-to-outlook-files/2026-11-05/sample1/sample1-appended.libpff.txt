@@ -1,0 +1,12 @@
+ 0
+/SPAM Search Folder 2 0
+/Top of Outlook data file 0
+/Top of Outlook data file/Deleted Items 0
+/Top of Outlook data file/Sample1 5
+    'Here is a sample message' {'sender_name': 'Terry Mahaffey', 'delivery_time': '2010-03-15T17:12:07.951519', 'message_id': '<B2FDDB8BE384C94794441DB4A7F3D8B804AE624B@TK5EX14MBXC114.redmond.corp.microsoft.com>'}
+    '<probe-full@example.invalid>' {'sender_name': 'probe', 'delivery_time': '2025-08-18T14:13:20', 'message_id': '<probe-full@example.invalid>'}
+    'probe bare' {}
+    '<probe-id-only@example.invalid>' {'message_id': '<probe-id-only@example.invalid>'}
+    'probe sender and time, no id' {'sender_name': 'probe', 'delivery_time': '2025-08-18T14:13:20'}
+/Search Root 0
+/ItemProcSearch 0

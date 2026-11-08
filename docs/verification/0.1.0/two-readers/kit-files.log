@@ -1,0 +1,39 @@
+$ python two_readers_files.py OUTDIR h-*.pst   (the 17 files regenerated from tests/fixtures/manifest)
+{"file": "h-all-excluded.pst", "folders": 7, "messages": 0, "errors": 0, "keywords": "resolved"}
+{"file": "h-correctness-as-v2.pst", "folders": 9, "messages": 32, "errors": 0, "keywords": "resolved"}
+{"file": "h-correctness.pst", "folders": 9, "messages": 32, "errors": 0, "keywords": "resolved"}
+{"file": "h-empty-names.pst", "folders": 7, "messages": 2, "errors": 0, "keywords": "resolved"}
+{"file": "h-folder-identity-as-v2.pst", "folders": 20, "messages": 11, "errors": 0, "keywords": "resolved"}
+{"file": "h-folder-identity.pst", "folders": 20, "messages": 11, "errors": 0, "keywords": "resolved"}
+{"file": "h-folders-only.pst", "folders": 9, "messages": 0, "errors": 0, "keywords": "resolved"}
+{"file": "h-large_attachment.pst", "folders": 7, "messages": 1, "errors": 0, "keywords": "resolved"}
+{"file": "h-large-cells.pst", "folders": 7, "messages": 3, "errors": 0, "keywords": "resolved"}
+{"file": "h-mail-complete.pst", "folders": 12, "messages": 8, "errors": 0, "keywords": "resolved"}
+{"file": "h-mail-folders.pst", "folders": 10, "messages": 7, "errors": 0, "keywords": "resolved"}
+{"file": "h-meetings.pst", "folders": 7, "messages": 10, "errors": 0, "keywords": "resolved"}
+{"file": "h-named.pst", "folders": 7, "messages": 4, "errors": 0, "keywords": "resolved"}
+{"file": "h-reports.pst", "folders": 7, "messages": 9, "errors": 0, "keywords": "resolved"}
+{"file": "h-smime.pst", "folders": 8, "messages": 7, "errors": 0, "keywords": "resolved"}
+{"file": "h-split-many-small.pst", "folders": 9, "messages": 400, "errors": 0, "keywords": "resolved"}
+{"file": "h-split.pst", "folders": 12, "messages": 28, "errors": 0, "keywords": "resolved"}
+h-all-excluded: 0 messages read by both readers
+h-correctness-as-v2: 32 messages read by both readers
+h-correctness: 32 messages read by both readers
+h-empty-names: 2 messages read by both readers
+h-folder-identity-as-v2: 11 messages read by both readers
+h-folder-identity: 11 messages read by both readers
+h-folders-only: 0 messages read by both readers
+h-large_attachment: 1 messages read by both readers
+h-large-cells: 3 messages read by both readers
+h-mail-complete: 8 messages read by both readers
+h-mail-folders: 7 messages read by both readers
+h-meetings: 10 messages read by both readers
+h-named: 4 messages read by both readers
+h-reports: 9 messages read by both readers
+h-smime: 7 messages read by both readers
+h-split-many-small: 400 messages read by both readers
+h-split: 28 messages read by both readers
+h-correctness-as-v2 962d38476f765f18bc49a11af3467574: subject_raw: XstReader <No subject> != libpff 
+h-correctness 962d38476f765f18bc49a11af3467574: subject_raw: XstReader <No subject> != libpff 
+565 messages read by both readers, 2 disagreements
+exit status: 1

@@ -1,0 +1,51 @@
+ 0
+/SPAM Search Folder 2 0
+/Top of Outlook data file 0
+/Top of Outlook data file/Deleted Items 0
+/Top of Outlook data file/h-reports 01 REPORT.IPM.Note.NDR 1
+    'Synthetic 000000 Türkçe 日本語' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:00', 'message_id': '<correctness-000000@example.invalid>'}
+/Top of Outlook data file/h-reports 02 REPORT.IPM.Note.DR 1
+    'Synthetic 000001 Türkçe 日本語' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:01', 'message_id': '<correctness-000001@example.invalid>'}
+/Top of Outlook data file/h-reports 03 REPORT.IPM.Note.Delayed.DR 1
+    'Synthetic 000002 Türkçe 日本語' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:02', 'message_id': '<correctness-000002@example.invalid>'}
+/Top of Outlook data file/h-reports 04 REPORT.IPM.Note.IPNRN 1
+    'Synthetic 000003 Türkçe 日本語' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:03', 'message_id': '<correctness-000003@example.invalid>'}
+/Top of Outlook data file/h-reports 05 REPORT.IPM.Note.IPNNRN 1
+    'Synthetic 000004 Türkçe 日本語' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:04', 'message_id': '<correctness-000004@example.invalid>'}
+/Top of Outlook data file/h-reports 06 REPORT.IPM.Note.NDR 1
+    'Synthetic 000005 Türkçe 日本語' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:05', 'message_id': '<correctness-000005@example.invalid>'}
+/Top of Outlook data file/h-reports 07 REPORT.IPM.Note.SMIME.MultipartSigned.NDR 1
+    'Synthetic 000006 Türkçe 日本語' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:06', 'message_id': '<correctness-000006@example.invalid>'}
+/Top of Outlook data file/h-reports 08 IPM.Note 1
+    'Synthetic 000007 Türkçe 日本語 LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:07', 'message_id': '<correctness-000007@example.invalid>'}
+/Top of Outlook data file/h-reports 09 REPORT.IPM.Schedule.Meeting.Request.NDR 1
+    'Synthetic 000000 Türkçe 日本語' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:00', 'message_id': '<correctness-000000@example.invalid>'}
+/Top of Outlook data file/h-meetings 01 IPM.Schedule.Meeting.Request 1
+    'Meeting' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:00', 'message_id': '<correctness-000000@example.invalid>'}
+/Top of Outlook data file/h-meetings 02 IPM.Schedule.Meeting.Request 1
+    'Meeting' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:01', 'message_id': '<correctness-000001@example.invalid>'}
+/Top of Outlook data file/h-meetings 03 IPM.Schedule.Meeting.Request 1
+    'Meeting' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:02', 'message_id': '<correctness-000002@example.invalid>'}
+/Top of Outlook data file/h-meetings 04 IPM.Schedule.Meeting.Request 1
+    'Daily' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:03', 'message_id': '<correctness-000003@example.invalid>'}
+/Top of Outlook data file/h-meetings 05 IPM.Schedule.Meeting.Resp.Pos 1
+    'Accepted: Meeting' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:04', 'message_id': '<correctness-000004@example.invalid>'}
+/Top of Outlook data file/h-meetings 06 IPM.Schedule.Meeting.Resp.Tent 1
+    'Tentative: Meeting' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:05', 'message_id': '<correctness-000005@example.invalid>'}
+/Top of Outlook data file/h-meetings 07 IPM.Schedule.Meeting.Resp.Neg 1
+    'Declined: Meeting' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:06', 'message_id': '<correctness-000006@example.invalid>'}
+/Top of Outlook data file/h-meetings 08 IPM.Schedule.Meeting.Canceled 1
+    'Canceled: Meeting' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:07', 'message_id': '<correctness-000007@example.invalid>'}
+/Top of Outlook data file/h-meetings 09 IPM.Schedule.Meeting.Notification.Forward 1
+    'Meeting Forward Notification: Meeting' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:00', 'message_id': '<correctness-000000@example.invalid>'}
+/Top of Outlook data file/h-meetings 10 IPM.Note 1
+    'Forwarded meeting' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:02', 'message_id': '<correctness-000002@example.invalid>'}
+/Top of Outlook data file/h-mail-folders 01 IPM.Note 1
+    'Synthetic 000003 Türkçe 日本語' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:03', 'message_id': '<correctness-000003@example.invalid>'}
+/Top of Outlook data file/h-mail-folders 02 IPM.Note 1
+    'Synthetic 000005 Türkçe 日本語' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:05', 'message_id': '<correctness-000005@example.invalid>'}
+/Top of Outlook data file/h-mail-folders 03 REPORT.IPM.Note.NDR 1
+    'Synthetic 000007 Türkçe 日本語 LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG LONG' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:07', 'message_id': '<correctness-000007@example.invalid>'}
+/Top of Outlook data file/h-mail-folders 04 IPM.Note 1
+    'Synthetic 000000 Türkçe 日本語' {'sender_name': 'Sentetik Gönderen', 'delivery_time': '2024-01-01T00:00:00', 'message_id': '<correctness-000000@example.invalid>'}
+/Search Root 0

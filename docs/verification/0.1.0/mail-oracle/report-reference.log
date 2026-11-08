@@ -1,0 +1,3 @@
+$ python tests/oracle/report_reference.py
+report_reference self-check passed
+exit status: 0

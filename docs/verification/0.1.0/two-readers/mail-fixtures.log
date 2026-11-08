@@ -1,0 +1,11 @@
+$ python two_readers.py target/release/pstsmith OUTDIR
+{"file": "mail-eml.pst", "folders": 8, "messages": 17, "errors": 0, "keywords": "resolved"}
+{"file": "mail-takeout.pst", "folders": 11, "messages": 7, "errors": 0, "keywords": "resolved"}
+{"file": "mail-thunderbird.pst", "folders": 8, "messages": 3, "errors": 0, "keywords": "resolved"}
+{"file": "mail-apple.pst", "folders": 8, "messages": 1, "errors": 0, "keywords": "resolved"}
+{"file": "mail-apple-mailbox.pst", "folders": 8, "messages": 1, "errors": 0, "keywords": "resolved"}
+{"file": "mail-apple-file.pst", "folders": 8, "messages": 1, "errors": 0, "keywords": "resolved"}
+{"file": "mail-crlf.pst", "folders": 8, "messages": 9, "errors": 0, "keywords": "resolved"}
+{"file": "mail-maildir.pst", "folders": 13, "messages": 7, "errors": 0, "keywords": "resolved"}
+46 messages read by both readers, 0 disagreements
+exit status: 0

@@ -1,0 +1,3 @@
+$ python tests/oracle/compare_mail.py target/release/pstsmith
+46 messages compared, 0 mismatches
+exit status: 0

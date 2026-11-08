@@ -1,0 +1,20 @@
+$ sh docs/verification/0.1.0/kit/regenerate.sh target/release/pstsmith OUTDIR    (pstsmith 0.1.0, macOS arm64)
+h-all-excluded.pst: OK
+h-correctness-as-v2.pst: OK
+h-correctness.pst: OK
+h-empty-names.pst: OK
+h-folder-identity-as-v2.pst: OK
+h-folder-identity.pst: OK
+h-folders-only.pst: OK
+h-large_attachment.pst: OK
+h-large-cells.pst: OK
+h-mail-complete.pst: OK
+h-mail-folders.pst: OK
+h-meetings.pst: OK
+h-named.pst: OK
+h-reports.pst: OK
+h-smime.pst: OK
+h-split-many-small.pst: OK
+h-split.pst: OK
+17 files written; not written here: h-inline-image.pst h-interleaved-as-v2.pst h-r6-A-production.pst 
+exit status: 0

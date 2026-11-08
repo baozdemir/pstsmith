@@ -1,0 +1,11 @@
+ 0
+/SPAM Search Folder 2 0
+/Top of Outlook data file 0
+/Top of Outlook data file/Deleted Items 0
+/Top of Outlook data file/Archive 0
+/Top of Outlook data file/Archive/2026 0
+/Top of Outlook data file/Inbox 3
+    '<probe-1@example.invalid>' {'sender_name': 'probe', 'delivery_time': '2025-08-18T14:13:20', 'message_id': '<probe-1@example.invalid>'}
+    '<probe-2@example.invalid>' {'sender_name': 'probe', 'delivery_time': '2025-08-18T14:13:20', 'message_id': '<probe-2@example.invalid>'}
+    '<probe-3@example.invalid>' {'sender_name': 'probe', 'delivery_time': '2025-08-18T14:13:20', 'message_id': '<probe-3@example.invalid>'}
+/Search Root 0
